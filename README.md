@@ -29,15 +29,6 @@ npm run build
 
 产物位于 `dist/`。默认生产接口前缀为 `/prod-api`，示例 `nginx.conf` 会将该前缀代理到 `http://127.0.0.1:6039`。部署时按实际情况修改 `proxy_pass` 即可。
 
-## Docker
-
-```bash
-docker build -t ruoyi-drama .
-docker run --rm -p 8080:80 ruoyi-drama
-```
-
-容器内的 `127.0.0.1` 指向容器自身；若后台运行在宿主机，请在构建镜像前将 `nginx.conf` 的 `proxy_pass` 改成可从容器访问的后台地址。
-
 ## 已迁移范围
 
 - RuoYi 账号密码登录及令牌持久化
@@ -47,3 +38,13 @@ docker run --rm -p 8080:80 ruoyi-drama
 - 分镜视频生成、进度轮询
 - 成片合成、进度查询、预览与下载
 - 聊天、应用市场、图片工作台等非短剧功能未引入
+
+---
+
+## 独家赞助
+
+访问 [Atlas Cloud 官网](https://www.atlascloud.ai/) · 编程计划优惠
+
+全模态 AI 推理平台，为开发者提供统一的 AI API，支持视频生成、图像生成和大语言模型。一次接入，即可访问 300+ 精选模型。
+
+<https://www.atlascloud.ai/>
