@@ -32,7 +32,7 @@ VITE_CLIENT_ID=后台配置的客户端ID
 `VITE_API_URL` 使用相对路径时，请求由 Vite 代理，可以避免浏览器跨域问题；也可将它改为后台完整 URL，但后台需要允许跨域。
 
 ### 3. 登录创作
-打开前端 → 使用后台账号登录 → 在「创作中心」首页写下故事灵感 → 点击「开始创作」进入短剧工作台，依次完成剧本打磨、资产配置、分镜确认与视频合成。
+打开前端 → 使用后台账号登录（默认管理员账号 `admin` / `admin123`）→ 在「创作中心」首页写下故事灵感 → 点击「开始创作」进入短剧工作台，依次完成剧本打磨、资产配置、分镜确认与视频合成。
 
 ### 4. 一键配置 Atlas Key（重要）
 短剧的图片 / 视频生成都依赖 [Atlas Cloud](https://www.atlascloud.ai/)。使用前需要配置 API Key：
@@ -43,6 +43,22 @@ VITE_CLIENT_ID=后台配置的客户端ID
 4. 提示「Atlas Key 已批量更新」即配置成功，回到短剧工作台即可生成图片与视频。
 
 > 该接口对应后台 `PUT /system/model/batchKeyByProvider`，按厂商编码 `atlas` 批量更新 `chat_model.api_key`，需拥有 `system:model:edit` 权限。
+
+### 5. 安装 FFmpeg（视频合成必需）
+短剧「分镜视频合成成片」功能依赖后端的 FFmpeg（需要包含 `libx264` 和 `aac` 编码器）。Windows 下可用 `ruoyi-ai` 仓库提供的一键脚本自动安装并配置环境变量：
+
+```powershell
+# 在 ruoyi-ai 仓库根目录执行（Windows PowerShell）
+powershell -ExecutionPolicy Bypass -File .\docs\script\install-ffmpeg-windows.ps1
+```
+
+脚本会：
+1. 检测是否已安装 `ffmpeg` / `ffprobe`，缺失则通过 `winget` 安装 `Gyan.FFmpeg`；
+2. 把绝对路径写入用户环境变量 `FFMPEG_PATH`、`FFPROBE_PATH`，并追加到 `Path`；
+3. 校验是否包含 `libx264`、`aac` 编码器，不满足会直接报错。
+
+> 安装完成后**必须完全重启 IntelliJ IDEA 和 ruoyi-ai 后端服务**，Spring 才会读取到新的 `FFMPEG_PATH` / `FFPROBE_PATH`。
+> 脚本依赖 `winget`，若未安装会提示先从 Microsoft Store 安装「应用安装程序」；也可改用项目 Dockerfile 运行后端（镜像内已含 FFmpeg）。
 
 ## 生产构建
 

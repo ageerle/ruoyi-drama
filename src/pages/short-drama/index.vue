@@ -826,13 +826,27 @@ function startPolling(item: ShortDramaStoryboard) {
   const id = item.id;
   stopPolling(id);
   let attempts = 0;
+  let failed404 = false;
   pollingTimers.value[id] = setInterval(async () => {
     if (++attempts > 60 || !ideaForm.value.videoModel) { stopPolling(id); return; }
     try {
       const updated = await retrieveStoryboardVideo(id, ideaForm.value.videoModel);
       Object.assign(item, updated);
       if (updated.videoStatus === 'done' || updated.videoStatus === 'failed') stopPolling(id);
-    } catch { /* 网络波动不终止轮询 */ }
+    } catch (e: any) {
+      // Atlas 返回 404：任务已失效（常见于更换 API Key 后残留的旧任务）。
+      // 终止轮询并标记为失败，避免反复报错刷屏；其余网络波动继续轮询。
+      const msg = e?.message || '';
+      if (msg.includes('404') || msg.includes('not found')) {
+        if (!failed404) {
+          failed404 = true;
+          item.videoStatus = 'failed';
+          item.videoId = undefined;
+          stopPolling(id);
+          ElMessage.warning('视频生成任务已失效，请重新生成');
+        }
+      }
+    }
   }, 3000);
 }
 
@@ -843,7 +857,17 @@ async function handleCheckVideoProgress(item: ShortDramaStoryboard) {
     const updated = await retrieveStoryboardVideo(item.id, ideaForm.value.videoModel);
     Object.assign(item, updated);
     if (updated.videoStatus === 'done' || updated.videoStatus === 'failed') stopPolling(item.id!);
-  } catch { ElMessage.error('查询失败，请稍后重试'); }
+  } catch (e: any) {
+    const msg = e?.message || '';
+    if (msg.includes('404') || msg.includes('not found')) {
+      item.videoStatus = 'failed';
+      item.videoId = undefined;
+      stopPolling(item.id!);
+      ElMessage.warning('视频生成任务已失效，请重新生成');
+    } else {
+      ElMessage.error('查询失败，请稍后重试');
+    }
+  }
 }
 
 function stopPolling(id: SnowflakeId) {
@@ -959,8 +983,19 @@ function pollImagePrediction(predictionId: string, model: string, progressKey: s
           reject(new Error('图片生成失败'));
         }
         // else: still polling (pending/processing)
-      } catch {
-        // 网络错误继续轮询
+      } catch (e: any) {
+        // Atlas 返回 404 会触发异常（前端 unwrap 后变成 message），说明任务已失效。
+        // 直接终止轮询并提示失败，避免反复报错刷屏。
+        const msg = e?.message || '';
+        if (msg.includes('404') || msg.includes('not found')) {
+          clearInterval(timer);
+          delete imagePollTimers.value[progressKey];
+          delete imageGenProgress.value[progressKey];
+          removePendingImageTask(progressKey);
+          reject(new Error('生成任务已失效，请重新生成图片'));
+          return;
+        }
+        // 其余网络错误继续轮询
       }
     }, IMAGE_POLL_INTERVAL);
     imagePollTimers.value[progressKey] = timer;

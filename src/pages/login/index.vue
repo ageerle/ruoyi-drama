@@ -14,8 +14,8 @@ const submitting = ref(false);
 const errorMessage = ref('');
 
 const form = reactive<LoginRequest>({
-  username: '',
-  password: '',
+  username: 'admin',
+  password: 'admin123',
   clientId: import.meta.env.VITE_CLIENT_ID,
   grantType: 'password',
   tenantId: '000000',
