@@ -9,6 +9,20 @@
 >
 > 请先按 [ruoyi-ai](https://github.com/ageerle/ruoyi-ai) 文档启动后台，默认地址 `http://127.0.0.1:6039`，本前端会通过 Vite 代理与之对接。
 
+## 演示截图
+
+从灵感输入到成片输出，完整呈现一条短剧的创作流程：创作中心首页 → 一键配置 Atlas Key → 剧本打磨 → 资产配置 → 分镜确认与视频合成。
+
+![创作中心首页](docs/demo/01-creation-center.png)
+
+![一键配置 Atlas Key](docs/demo/02-key-config.png)
+
+![短剧工作台 · 剧本打磨](docs/demo/03-script.png)
+
+![资产配置](docs/demo/04-assets.png)
+
+![分镜确认与视频合成](docs/demo/05-storyboard.png)
+
 ## 简单教程
 
 ### 1. 启动后台
