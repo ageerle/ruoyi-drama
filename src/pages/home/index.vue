@@ -1,9 +1,11 @@
 ﻿<script setup lang="ts">
 import type { ShortDramaProject } from '@/api/shortDrama/types';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
+import type { FormInstance, FormRules } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { listShortDramaProjects } from '@/api/shortDrama';
+import { batchUpdateKeyByProvider } from '@/api/model';
 
 const router = useRouter();
 const loading = ref(true);
@@ -71,12 +73,51 @@ function formatTime(value?: string) {
 }
 
 onMounted(refreshProjects);
+
+const keyDialogVisible = ref(false);
+const keyFormRef = ref<FormInstance>();
+const keySubmitting = ref(false);
+const keyForm = reactive({ apiKey: '' });
+const keyRules: FormRules = {
+  apiKey: [{ required: true, message: '请输入 Atlas Cloud API Key', trigger: 'blur' }],
+};
+
+function openKeyDialog() {
+  keyForm.apiKey = '';
+  keyDialogVisible.value = true;
+}
+
+async function submitKey(formEl?: FormInstance) {
+  if (!formEl) return;
+  try {
+    await formEl.validate();
+  }
+  catch {
+    return;
+  }
+  keySubmitting.value = true;
+  try {
+    await batchUpdateKeyByProvider('atlas', keyForm.apiKey.trim());
+    ElMessage.success('Atlas Key 已批量更新');
+    keyDialogVisible.value = false;
+  }
+  catch {
+    // request.ts 已统一提示错误。
+  }
+  finally {
+    keySubmitting.value = false;
+  }
+}
 </script>
 
 <template>
   <div class="home-page">
     <div class="ambient ambient-one" />
     <div class="ambient ambient-two" />
+
+    <button type="button" class="key-config-entry" @click="openKeyDialog">
+      <el-icon><Key /></el-icon><span>Key 配置</span>
+    </button>
 
     <main class="home-content">
       <section class="hero-grid">
@@ -206,6 +247,20 @@ onMounted(refreshProjects);
         </div>
       </section>
     </main>
+
+    <el-dialog v-model="keyDialogVisible" title="一键配置 Atlas Key" width="460px" append-to-body>
+      <p class="key-dialog-tip">填入你的 Atlas Cloud API Key，将批量应用到所有 Atlas 模型（图片 / 视频）。可在 <a href="https://www.atlascloud.ai/" target="_blank" rel="noopener">atlascloud.ai</a> 获取。</p>
+      <el-alert type="warning" :closable="false" show-icon title="提交后会覆盖当前所有 Atlas 模型的 Key，请确认无误。" style="margin-bottom: 16px;" />
+      <el-form ref="keyFormRef" :model="keyForm" :rules="keyRules" label-position="top">
+        <el-form-item label="Atlas API Key" prop="apiKey">
+          <el-input v-model="keyForm.apiKey" type="password" show-password placeholder="粘贴你的 Atlas Cloud API Key" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="keyDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="keySubmitting" @click="submitKey(keyFormRef)">保存并应用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -241,6 +296,31 @@ onMounted(refreshProjects);
   padding: 72px 0 90px;
   margin: 0 auto;
 }
+
+.key-config-entry {
+  position: fixed;
+  top: calc(var(--header-container-default-heigth) + 18px);
+  right: 28px;
+  z-index: 20;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #566986;
+  cursor: pointer;
+  background: rgb(255 255 255 / 82%);
+  border: 1px solid #e2e8f1;
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgb(37 99 235 / 8%);
+  backdrop-filter: blur(10px);
+  transition: .2s ease;
+}
+
+.key-config-entry:hover { color: var(--drama-primary); border-color: #93c5fd; }
+
+.key-dialog-tip { margin: 0 0 14px; font-size: 13px; line-height: 1.7; color: #64748b; }
+.key-dialog-tip a { color: var(--drama-primary); }
 
 .hero-grid {
   display: grid;
