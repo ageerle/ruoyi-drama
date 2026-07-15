@@ -2,6 +2,7 @@ import type { HookFetchPlugin } from 'hook-fetch';
 import { ElMessage } from 'element-plus';
 import hookFetch from 'hook-fetch';
 import { sseTextDecoderPlugin } from 'hook-fetch/plugins';
+import i18n from '@/locales';
 import router from '@/routers';
 import { useUserStore } from '@/stores';
 
@@ -40,7 +41,7 @@ function jwtPlugin(): HookFetchPlugin<BaseResponse> {
         userStore.logout();
         await router.replace({ name: 'login', query: { redirect } });
       }
-      const message = response.result?.msg || '请求失败';
+      const message = response.result?.msg || i18n.global.t('common.requestFailed');
       ElMessage.error(message);
       return Promise.reject(new Error(message));
     },

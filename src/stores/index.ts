@@ -5,4 +5,5 @@ const store = createPinia();
 store.use(piniaPluginPersistedstate);
 
 export default store;
+export * from './modules/app';
 export * from './modules/user';

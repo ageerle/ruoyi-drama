@@ -1,23 +1,26 @@
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import LocaleSwitcher from '@/components/LocaleSwitcher.vue';
 import { useUserStore } from '@/stores';
 
 const router = useRouter();
 const userStore = useUserStore();
+const { t } = useI18n();
 
-const displayName = computed(() => userStore.userInfo?.nickName || userStore.userInfo?.username || '创作者');
+const displayName = computed(() => userStore.userInfo?.nickName || userStore.userInfo?.username || t('layout.creator'));
 const initials = computed(() => displayName.value.slice(0, 1).toUpperCase());
 
 async function handleLogout() {
   try {
-    await ElMessageBox.confirm('退出后需要重新登录才能继续创作。', '确认退出？', {
-      confirmButtonText: '退出登录',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('layout.logout.confirmBody'), t('layout.logout.confirmTitle'), {
+      confirmButtonText: t('layout.logout.confirmText'),
+      cancelButtonText: t('layout.logout.cancelText'),
       type: 'warning',
     });
     userStore.logout();
-    ElMessage.success('已退出登录');
+    ElMessage.success(t('layout.logout.success'));
     await router.replace({ name: 'login' });
   }
   catch {
@@ -41,25 +44,26 @@ async function handleLogout() {
         </div>
       </router-link>
 
-      <nav class="main-nav" aria-label="主导航">
-        <router-link :to="{ name: 'home' }"><el-icon><House /></el-icon><span>创作中心</span></router-link>
-        <router-link :to="{ name: 'shortDrama' }"><el-icon><Film /></el-icon><span>项目工作台</span></router-link>
+      <nav class="main-nav" :aria-label="t('layout.aria.mainNav')">
+        <router-link :to="{ name: 'home' }"><el-icon><House /></el-icon><span>{{ t('layout.nav.home') }}</span></router-link>
+        <router-link :to="{ name: 'shortDrama' }"><el-icon><Film /></el-icon><span>{{ t('layout.nav.shortDrama') }}</span></router-link>
       </nav>
 
       <div class="header-actions">
+        <LocaleSwitcher />
         <el-button class="new-project" type="primary" @click="router.push({ name: 'shortDrama', query: { fresh: '1' } })">
-          <el-icon><Plus /></el-icon> 新建短剧
+          <el-icon><Plus /></el-icon> {{ t('layout.newProject') }}
         </el-button>
         <el-dropdown trigger="click" placement="bottom-end">
           <button class="account-button" type="button">
             <span class="avatar">{{ initials }}</span>
-            <span class="account-copy"><strong>{{ displayName }}</strong><small>创作者</small></span>
+            <span class="account-copy"><strong>{{ displayName }}</strong><small>{{ t('layout.creator') }}</small></span>
             <el-icon><ArrowDown /></el-icon>
           </button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item disabled><el-icon><User /></el-icon>{{ displayName }}</el-dropdown-item>
-              <el-dropdown-item divided @click="handleLogout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
+              <el-dropdown-item divided @click="handleLogout"><el-icon><SwitchButton /></el-icon>{{ t('layout.logout.action') }}</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>

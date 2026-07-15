@@ -1,8 +1,26 @@
 ﻿<script setup lang="ts">
+/*
+ * 国际化（i18n）迁移约定 —— 第二批机械迁移时遵循：
+ * 1. code→label 映射表（sceneTypeLabels / roleLevelLabels / artStyleLabels / phaseLabels 等）改为 computed，
+ *    code 不变，只把 label 换成 t('shortDrama.xxx.<key>')，模板用法由 map[k] 改为 map.value[k]。
+ * 2. 选项数组（artStyleOptions / videoRatioOptions / transitionOptions / sceneTypeOptions）改为
+ *    computed(() => getXxxOptions(t))（见 @/constants/drama）。
+ * 3. ~50 条 ElMessage → t('shortDrama.messages.*')；带参数的（如 '生成失败：' + e.message）用 { reason } 命名插值。
+ * 4. ElMessageBox（删除项目确认）的 title/body/按钮 → shortDrama.messages.deleteConfirm*。
+ * 5. SSE phase 标签（sseProgressSteps 初始 label + phaseLabels）改为 computed，源自 shortDrama.sse.phases.*。
+ * 6. ~110 模板字符串按 step 归入 shortDrama.ui.<step>.*。
+ * 7. shotTypeOptions / cameraMoveOptions 保持原样：其值是 AI 生成的中文显示字符串本身（非稳定 code），
+ *    无法干净走 i18n 往返，作为已知限制；完整修复需后端+前端 normalize 层。
+ * 8. 后端返回的自由文本字段（scriptText / sceneTitle / personalityTags / modelDescribe / 错误 msg 等）
+ *    已带语言，前端原样渲染，不得用 t() 包裹。
+ *
+ * 本轮已迁移代表性切片：workflowSteps、composeStatusLabels，以及若干 ElMessage，作为模式验证。
+ */
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { CircleCheckFilled } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
   analyzeAssets,
   composeShortDramaVideo,
@@ -60,13 +78,14 @@ type StepName = 'idea' | 'script' | 'assets' | 'storyboard';
 
 const route = useRoute();
 const userStore = useUserStore();
+const { t } = useI18n();
 
-const workflowSteps: Array<{ name: StepName; index: string; title: string; desc: string }> = [
-  { name: 'idea', index: '01', title: '创意设定', desc: '输入故事核心与生成偏好' },
-  { name: 'script', index: '02', title: '剧本打磨', desc: '编辑大纲、正文与基调' },
-  { name: 'assets', index: '03', title: '资产配置', desc: '角色档案与场景站位' },
-  { name: 'storyboard', index: '04', title: '分镜确认', desc: '镜头规划与视频提示词' },
-];
+const workflowSteps = computed<Array<{ name: StepName; index: string; title: string; desc: string }>>(() => [
+  { name: 'idea', index: '01', title: t('shortDrama.workflow.idea.title'), desc: t('shortDrama.workflow.idea.desc') },
+  { name: 'script', index: '02', title: t('shortDrama.workflow.script.title'), desc: t('shortDrama.workflow.script.desc') },
+  { name: 'assets', index: '03', title: t('shortDrama.workflow.assets.title'), desc: t('shortDrama.workflow.assets.desc') },
+  { name: 'storyboard', index: '04', title: t('shortDrama.workflow.storyboard.title'), desc: t('shortDrama.workflow.storyboard.desc') },
+]);
 
 const videoRatioOptions: Array<{ label: string; value: ShortDramaAspectRatio }> = [
   { label: '竖屏 9:16', value: '9:16' },
@@ -82,12 +101,12 @@ const transitionOptions: Array<{ label: string; value: ShortDramaTransitionType 
 ];
 
 const transitionDurationOptions = [0.3, 0.5, 1, 1.5];
-const composeStatusLabels: Record<ShortDramaComposeStatus, string> = {
-  pending: '排队中',
-  processing: '合成中',
-  done: '已完成',
-  failed: '合成失败',
-};
+const composeStatusLabels = computed<Record<ShortDramaComposeStatus, string>>(() => ({
+  pending: t('shortDrama.compose.status.pending'),
+  processing: t('shortDrama.compose.status.processing'),
+  done: t('shortDrama.compose.status.done'),
+  failed: t('shortDrama.compose.status.failed'),
+}));
 
 const artStyleOptions = [
   { label: '真实写实', value: 'realistic' },
@@ -201,7 +220,7 @@ const scriptForm = ref<ShortDramaScript>({
 
 const hasProject = computed(() => !!currentProjectId.value);
 const canGenerate = computed(() => !!ideaForm.value.idea.trim() && !!ideaForm.value.model && !generating.value);
-const maxReachedStepIndex = computed(() => workflowSteps.findIndex(item => item.name === maxReachedStep.value));
+const maxReachedStepIndex = computed(() => workflowSteps.value.findIndex(item => item.name === maxReachedStep.value));
 const completedStoryboards = computed(() => storyboardDrafts.value.filter(
   item => item.id && item.videoStatus === 'done' && !!item.videoUrl,
 ));
@@ -225,7 +244,7 @@ const composeDisabledReason = computed(() => {
 });
 const composeProgress = computed(() => Math.min(100, Math.max(0, Math.round(composeResult.value?.progress || 0))));
 const composeStatusText = computed(() => composeResult.value
-  ? composeStatusLabels[composeResult.value.status]
+  ? composeStatusLabels.value[composeResult.value.status]
   : '');
 const composeStatusTagType = computed<'success' | 'warning' | 'danger'>(() => {
   if (composeResult.value?.status === 'done') return 'success';
@@ -502,7 +521,7 @@ async function handleCreateFromIdea() {
   if (projectId) {
     await refreshProjects();
     await loadDetail(projectId);
-    ElMessage.success('短剧已生成，可查看各阶段结果');
+    ElMessage.success(t('shortDrama.messages.generateSuccess'));
   } else {
     ElMessage.error('生成失败，未获取到项目ID');
   }
@@ -537,7 +556,7 @@ async function handleSaveScript() {
     const saved = await saveShortDramaScript(scriptForm.value);
     scriptForm.value = { ...saved };
     await loadDetail(currentProjectId.value);
-    ElMessage.success('剧本已保存');
+    ElMessage.success(t('shortDrama.messages.scriptSaved'));
   } finally { savingScript.value = false; }
 }
 

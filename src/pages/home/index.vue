@@ -4,22 +4,23 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { getArtStyleOptions, getVideoRatioOptions, artStyleLabel } from '@/constants/drama';
 import { listShortDramaProjects } from '@/api/shortDrama';
 import { batchUpdateKeyByProvider } from '@/api/model';
+import { useAppStore } from '@/stores';
 
 const router = useRouter();
+const { t } = useI18n();
+const appStore = useAppStore();
 const loading = ref(true);
 const projects = ref<ShortDramaProject[]>([]);
 const idea = ref('');
 const videoRatio = ref('9:16');
 const artStyle = ref('realistic');
 
-const styleLabels: Record<string, string> = {
-  realistic: '真实写实',
-  'american-comic': '美式漫画',
-  'chinese-comic': '国漫风格',
-  'japanese-anime': '日系动漫',
-};
+const artStyleOptions = computed(() => getArtStyleOptions(t));
+const videoRatioOptions = computed(() => getVideoRatioOptions(t));
 
 const activeCount = computed(() => projects.value.filter(item => item.status !== 'archived').length);
 const recentProjects = computed(() => projects.value.slice(0, 6));
@@ -31,7 +32,7 @@ async function refreshProjects() {
     projects.value = await listShortDramaProjects();
   }
   catch {
-    ElMessage.error('项目列表加载失败，请检查后台服务');
+    ElMessage.error(t('home.messages.loadFailed'));
   }
   finally {
     loading.value = false;
@@ -40,7 +41,7 @@ async function refreshProjects() {
 
 function startCreation() {
   if (!idea.value.trim()) {
-    ElMessage.warning('先写下你的故事灵感');
+    ElMessage.warning(t('home.messages.ideaRequired'));
     return;
   }
   router.push({
@@ -59,17 +60,17 @@ function openProject(projectId?: string) {
 }
 
 function formatTime(value?: string) {
-  if (!value) return '刚刚更新';
+  if (!value) return t('common.time.justNow');
   const time = new Date(value).getTime();
   if (Number.isNaN(time)) return value;
   const diff = Date.now() - time;
   const minutes = Math.max(0, Math.floor(diff / 60000));
-  if (minutes < 1) return '刚刚更新';
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return t('common.time.justNow');
+  if (minutes < 60) return t('common.time.minutesAgo', { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t('common.time.hoursAgo', { n: hours });
   const days = Math.floor(hours / 24);
-  return days < 30 ? `${days} 天前` : new Date(value).toLocaleDateString('zh-CN');
+  return days < 30 ? t('common.time.daysAgo', { n: days }) : new Date(value).toLocaleDateString(appStore.locale);
 }
 
 onMounted(refreshProjects);
@@ -78,9 +79,9 @@ const keyDialogVisible = ref(false);
 const keyFormRef = ref<FormInstance>();
 const keySubmitting = ref(false);
 const keyForm = reactive({ apiKey: '' });
-const keyRules: FormRules = {
-  apiKey: [{ required: true, message: '请输入 Atlas Cloud API Key', trigger: 'blur' }],
-};
+const keyRules = computed<FormRules>(() => ({
+  apiKey: [{ required: true, message: t('home.messages.atlasKeyRequired'), trigger: 'blur' }],
+}));
 
 function openKeyDialog() {
   keyForm.apiKey = '';
@@ -98,7 +99,7 @@ async function submitKey(formEl?: FormInstance) {
   keySubmitting.value = true;
   try {
     await batchUpdateKeyByProvider('atlas', keyForm.apiKey.trim());
-    ElMessage.success('Atlas Key 已批量更新');
+    ElMessage.success(t('home.messages.atlasKeyUpdated'));
     keyDialogVisible.value = false;
   }
   catch {
@@ -116,22 +117,22 @@ async function submitKey(formEl?: FormInstance) {
     <div class="ambient ambient-two" />
 
     <button type="button" class="key-config-entry" @click="openKeyDialog">
-      <el-icon><Key /></el-icon><span>Key 配置</span>
+      <el-icon><Key /></el-icon><span>{{ t('home.keyConfig.entry') }}</span>
     </button>
 
     <main class="home-content">
       <section class="hero-grid">
         <div class="hero-copy">
           <div class="eyebrow"><span /> AI SHORT DRAMA STUDIO</div>
-          <h1>把一个灵感，<br><em>变成一部短剧。</em></h1>
-          <p>从故事构思到角色、场景、分镜和成片，让 AI 接住繁琐流程，你只负责做创作决定。</p>
+          <h1>{{ t('home.hero.titleLead') }}<br><em>{{ t('home.hero.titleTail') }}</em></h1>
+          <p>{{ t('home.hero.subtitle') }}</p>
 
           <div class="hero-metrics">
-            <div><strong>{{ projects.length }}</strong><span>全部项目</span></div>
+            <div><strong>{{ projects.length }}</strong><span>{{ t('home.hero.metricAll') }}</span></div>
             <i />
-            <div><strong>{{ activeCount }}</strong><span>创作进行中</span></div>
+            <div><strong>{{ activeCount }}</strong><span>{{ t('home.hero.metricActive') }}</span></div>
             <i />
-            <div><strong>4</strong><span>生产阶段</span></div>
+            <div><strong>4</strong><span>{{ t('home.hero.metricStages') }}</span></div>
           </div>
         </div>
 
@@ -144,19 +145,19 @@ async function submitKey(formEl?: FormInstance) {
             <div class="shot shot-main">
               <span>SCENE 01</span>
               <el-icon><VideoPlay /></el-icon>
-              <small>故事正在成为画面</small>
+              <small>{{ t('home.pipeline.sceneCopy') }}</small>
             </div>
-            <div class="shot shot-side one"><el-icon><UserFilled /></el-icon><small>角色</small></div>
-            <div class="shot shot-side two"><el-icon><PictureFilled /></el-icon><small>场景</small></div>
+            <div class="shot shot-side one"><el-icon><UserFilled /></el-icon><small>{{ t('home.pipeline.charLabel') }}</small></div>
+            <div class="shot shot-side two"><el-icon><PictureFilled /></el-icon><small>{{ t('home.pipeline.locLabel') }}</small></div>
           </div>
           <div class="pipeline-steps">
-            <span class="done"><b>01</b>创意</span>
+            <span class="done"><b>01</b>{{ t('home.pipeline.steps.idea') }}</span>
             <i />
-            <span><b>02</b>剧本</span>
+            <span><b>02</b>{{ t('home.pipeline.steps.script') }}</span>
             <i />
-            <span><b>03</b>资产</span>
+            <span><b>03</b>{{ t('home.pipeline.steps.assets') }}</span>
             <i />
-            <span><b>04</b>分镜</span>
+            <span><b>04</b>{{ t('home.pipeline.steps.storyboard') }}</span>
           </div>
         </aside>
       </section>
@@ -164,41 +165,36 @@ async function submitKey(formEl?: FormInstance) {
       <section class="composer-shell">
         <div class="composer-label">
           <span><el-icon><MagicStick /></el-icon></span>
-          <div><strong>今天想拍什么故事？</strong><small>一句话也可以，AI 会帮你扩展成完整制作方案</small></div>
+          <div><strong>{{ t('home.composer.title') }}</strong><small>{{ t('home.composer.sub') }}</small></div>
         </div>
         <el-input
           v-model="idea"
           type="textarea"
           :autosize="{ minRows: 4, maxRows: 8 }"
           resize="none"
-          placeholder="例如：一个只能看见别人倒计时的外卖员，在最后一单遇见了没有倒计时的女孩……"
+          :placeholder="t('home.composer.placeholder')"
           @keydown.ctrl.enter="startCreation"
         />
         <div class="composer-footer">
           <div class="quick-options">
-            <el-select v-model="videoRatio" aria-label="画面比例">
-              <el-option label="竖屏 9:16" value="9:16" />
-              <el-option label="横屏 16:9" value="16:9" />
-              <el-option label="方形 1:1" value="1:1" />
+            <el-select v-model="videoRatio" :aria-label="t('shortDrama.options.ratio.vertical')">
+              <el-option v-for="item in videoRatioOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
-            <el-select v-model="artStyle" aria-label="视觉风格">
-              <el-option label="真实写实" value="realistic" />
-              <el-option label="美式漫画" value="american-comic" />
-              <el-option label="国漫风格" value="chinese-comic" />
-              <el-option label="日系动漫" value="japanese-anime" />
+            <el-select v-model="artStyle" :aria-label="t('shortDrama.options.artStyle.realistic')">
+              <el-option v-for="item in artStyleOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
-            <span class="shortcut">Ctrl + Enter 快速开始</span>
+            <span class="shortcut">{{ t('home.composer.shortcut') }}</span>
           </div>
           <el-button class="create-button" type="primary" @click="startCreation">
-            开始创作 <el-icon><Right /></el-icon>
+            {{ t('home.composer.create') }} <el-icon><Right /></el-icon>
           </el-button>
         </div>
       </section>
 
       <section class="section-block">
         <div class="section-heading">
-          <div><span>RECENT PROJECTS</span><h2>继续最近的创作</h2></div>
-          <button type="button" @click="router.push({ name: 'shortDrama' })">进入项目工作台 <el-icon><ArrowRight /></el-icon></button>
+          <div><span>RECENT PROJECTS</span><h2>{{ t('home.section.recentTitle') }}</h2></div>
+          <button type="button" @click="router.push({ name: 'shortDrama' })">{{ t('home.section.enterWorkbench') }} <el-icon><ArrowRight /></el-icon></button>
         </div>
 
         <div v-if="loading" class="project-grid">
@@ -213,52 +209,52 @@ async function submitKey(formEl?: FormInstance) {
             @click="openProject(project.id)"
           >
             <div class="project-visual" :class="`tone-${index % 4}`">
-              <span class="project-status"><b />{{ project.status === 'archived' ? '已归档' : '创作中' }}</span>
+              <span class="project-status"><b />{{ project.status === 'archived' ? t('home.project.statusArchived') : t('home.project.statusActive') }}</span>
               <div class="visual-number">{{ String(index + 1).padStart(2, '0') }}</div>
               <el-icon><Film /></el-icon>
-              <small>{{ styleLabels[project.artStyle || 'realistic'] || '自定义风格' }}</small>
+              <small>{{ artStyleLabel(project.artStyle, t) }}</small>
             </div>
             <div class="project-info">
               <strong>{{ project.projectName }}</strong>
-              <p>{{ project.description || '等待你继续完善这个故事。' }}</p>
+              <p>{{ project.description || t('home.project.emptyDesc') }}</p>
               <span><el-icon><Clock /></el-icon>{{ formatTime(project.updateTime || project.createTime) }}</span>
             </div>
           </button>
         </div>
         <div v-else class="empty-projects">
           <span><el-icon><Film /></el-icon></span>
-          <div><strong>第一部作品正等你开场</strong><p>在上方写下灵感，开始建立你的短剧项目。</p></div>
-          <el-button plain @click="idea = '一个普通人突然获得改变命运的机会，却发现每次选择都需要付出代价。'">使用示例灵感</el-button>
+          <div><strong>{{ t('home.empty.title') }}</strong><p>{{ t('home.empty.desc') }}</p></div>
+          <el-button plain @click="idea = t('home.exampleIdea')">{{ t('home.empty.useExample') }}</el-button>
         </div>
       </section>
 
       <section class="guide-grid">
         <div class="guide-copy">
           <span>CREATIVE PIPELINE</span>
-          <h2>一条清晰的生产线，<br>让每一步都有掌控感。</h2>
-          <p>每个阶段都可检查、修改和重新生成。AI 提供效率，最终判断始终在你手里。</p>
-          <button v-if="latestProject" type="button" @click="openProject(latestProject.id)">继续上次创作 <el-icon><ArrowRight /></el-icon></button>
+          <h2>{{ t('home.guide.titleLead') }}<br>{{ t('home.guide.titleTail') }}</h2>
+          <p>{{ t('home.guide.desc') }}</p>
+          <button v-if="latestProject" type="button" @click="openProject(latestProject.id)">{{ t('home.guide.continueLast') }} <el-icon><ArrowRight /></el-icon></button>
         </div>
         <div class="guide-steps">
-          <article><b>01</b><span><el-icon><EditPen /></el-icon></span><div><strong>创意与剧本</strong><p>从一句故事梗概扩展人物、冲突和完整剧本。</p></div></article>
-          <article><b>02</b><span><el-icon><Avatar /></el-icon></span><div><strong>角色与场景</strong><p>统一角色形象、服装和世界观视觉风格。</p></div></article>
-          <article><b>03</b><span><el-icon><Operation /></el-icon></span><div><strong>镜头与表演</strong><p>规划景别、运镜、站位和演员表演方向。</p></div></article>
-          <article><b>04</b><span><el-icon><VideoCamera /></el-icon></span><div><strong>视频与成片</strong><p>逐镜生成视频，完成转场、画幅和最终合成。</p></div></article>
+          <article><b>01</b><span><el-icon><EditPen /></el-icon></span><div><strong>{{ t('home.guide.steps.s1Title') }}</strong><p>{{ t('home.guide.steps.s1Desc') }}</p></div></article>
+          <article><b>02</b><span><el-icon><Avatar /></el-icon></span><div><strong>{{ t('home.guide.steps.s2Title') }}</strong><p>{{ t('home.guide.steps.s2Desc') }}</p></div></article>
+          <article><b>03</b><span><el-icon><Operation /></el-icon></span><div><strong>{{ t('home.guide.steps.s3Title') }}</strong><p>{{ t('home.guide.steps.s3Desc') }}</p></div></article>
+          <article><b>04</b><span><el-icon><VideoCamera /></el-icon></span><div><strong>{{ t('home.guide.steps.s4Title') }}</strong><p>{{ t('home.guide.steps.s4Desc') }}</p></div></article>
         </div>
       </section>
     </main>
 
-    <el-dialog v-model="keyDialogVisible" title="一键配置 Atlas Key" width="460px" append-to-body>
-      <p class="key-dialog-tip">填入你的 Atlas Cloud API Key，将批量应用到所有 Atlas 模型（图片 / 视频）。可在 <a href="https://www.atlascloud.ai/" target="_blank" rel="noopener">atlascloud.ai</a> 获取。</p>
-      <el-alert type="warning" :closable="false" show-icon title="提交后会覆盖当前所有 Atlas 模型的 Key，请确认无误。" style="margin-bottom: 16px;" />
+    <el-dialog v-model="keyDialogVisible" :title="t('home.keyConfig.dialogTitle')" width="460px" append-to-body>
+      <p class="key-dialog-tip">{{ t('home.keyConfig.tip') }}</p>
+      <el-alert type="warning" :closable="false" show-icon :title="t('home.keyConfig.warning')" style="margin-bottom: 16px;" />
       <el-form ref="keyFormRef" :model="keyForm" :rules="keyRules" label-position="top">
-        <el-form-item label="Atlas API Key" prop="apiKey">
-          <el-input v-model="keyForm.apiKey" type="password" show-password placeholder="粘贴你的 Atlas Cloud API Key" />
+        <el-form-item :label="t('home.keyConfig.label')" prop="apiKey">
+          <el-input v-model="keyForm.apiKey" type="password" show-password :placeholder="t('home.keyConfig.placeholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="keyDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="keySubmitting" @click="submitKey(keyFormRef)">保存并应用</el-button>
+        <el-button @click="keyDialogVisible = false">{{ t('home.keyConfig.cancel') }}</el-button>
+        <el-button type="primary" :loading="keySubmitting" @click="submitKey(keyFormRef)">{{ t('home.keyConfig.save') }}</el-button>
       </template>
     </el-dialog>
   </div>

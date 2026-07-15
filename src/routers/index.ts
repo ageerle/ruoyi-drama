@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import i18n from '@/locales';
 import { useUserStore } from '@/stores';
 
 const router = createRouter({
@@ -8,7 +9,7 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: () => import('@/pages/login/index.vue'),
-      meta: { title: '登录' },
+      meta: { title: 'route.login' },
     },
     {
       path: '/',
@@ -19,13 +20,13 @@ const router = createRouter({
           path: 'home',
           name: 'home',
           component: () => import('@/pages/home/index.vue'),
-          meta: { title: '创作中心' },
+          meta: { title: 'route.home' },
         },
         {
           path: 'short-drama',
           name: 'shortDrama',
           component: () => import('@/pages/short-drama/index.vue'),
-          meta: { title: '短剧创作' },
+          meta: { title: 'route.shortDrama' },
         },
       ],
     },
@@ -35,7 +36,11 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const userStore = useUserStore();
-  document.title = `${String(to.meta.title || '')}${to.meta.title ? ' - ' : ''}${import.meta.env.VITE_WEB_TITLE}`;
+  const titleKey = typeof to.meta.title === 'string' ? to.meta.title : '';
+  const title = titleKey ? i18n.global.t(titleKey) : '';
+  // 页面标题后缀走 locale key；VITE_WEB_TITLE 仅作后台/品牌引用，不再承担 UI 本地化
+  const webTitle = i18n.global.t('common.webTitle');
+  document.title = title ? `${title} - ${webTitle}` : webTitle;
 
   if (!userStore.token && to.name !== 'login') {
     return { name: 'login', query: { redirect: to.fullPath } };

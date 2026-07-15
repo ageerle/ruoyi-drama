@@ -3,12 +3,15 @@ import type { FormInstance, FormRules } from 'element-plus';
 import type { LoginRequest, LoginResponse } from '@/api/auth/types';
 import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import LocaleSwitcher from '@/components/LocaleSwitcher.vue';
 import { login } from '@/api/auth';
 import { useUserStore } from '@/stores';
 
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
+const { t } = useI18n();
 const formRef = ref<FormInstance>();
 const submitting = ref(false);
 const errorMessage = ref('');
@@ -22,10 +25,10 @@ const form = reactive<LoginRequest>({
   uuid: 'a5705def96be468f80e4b8bde3127c31',
 });
 
-const rules: FormRules<LoginRequest> = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
-};
+const rules = computed<FormRules<LoginRequest>>(() => ({
+  username: [{ required: true, message: t('login.rules.usernameRequired'), trigger: 'blur' }],
+  password: [{ required: true, message: t('login.rules.passwordRequired'), trigger: 'blur' }],
+}));
 
 async function handleLogin() {
   await formRef.value?.validate();
@@ -35,14 +38,14 @@ async function handleLogin() {
     const response = await login(form);
     const payload = ((response as unknown as { data?: LoginResponse }).data || response) as LoginResponse;
     const token = payload.access_token || payload.token;
-    if (!token) throw new Error('后台未返回访问令牌');
+    if (!token) throw new Error(t('login.errors.noToken'));
     userStore.setToken(token);
     userStore.setUserInfo(payload.userInfo || { username: form.username });
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/home';
     await router.replace(redirect);
   }
   catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '登录失败，请检查账号或后台服务';
+    errorMessage.value = error instanceof Error ? error.message : t('login.errors.fallback');
   }
   finally {
     submitting.value = false;
@@ -58,33 +61,36 @@ async function handleLogin() {
         <span class="brand-mark"><i /><el-icon><VideoCameraFilled /></el-icon></span>
         <div><strong>RUOYI <em>DRAMA</em></strong><small>AI STORY STUDIO</small></div>
       </div>
-      <div class="system-state"><b /> SYSTEM READY <span>·</span> V1.0</div>
+      <div class="login-header-right">
+        <div class="system-state"><b /> SYSTEM READY <span>·</span> V1.0</div>
+        <LocaleSwitcher />
+      </div>
     </header>
 
     <main class="login-main">
       <section class="story-stage">
         <div class="stage-kicker"><span>AI NARRATIVE PRODUCTION</span><i /></div>
-        <h1>从第一句故事，<br>到最后一个镜头。</h1>
-        <p>一体化 AI 短剧制作工作台。打磨剧本、建立角色资产、规划分镜，并生成你的最终成片。</p>
+        <h1>{{ t('login.hero.titleLead') }}<br>{{ t('login.hero.titleTail') }}</h1>
+        <p>{{ t('login.hero.subtitle') }}</p>
 
         <div class="stage-visual">
           <div class="viewfinder">
             <i class="corner lt" /><i class="corner rt" /><i class="corner lb" /><i class="corner rb" />
             <div class="recording"><b /> REC</div>
-            <div class="scene-copy"><span>SCENE 01 · TAKE 03</span><strong>每个灵感<br>都值得被看见</strong><small>RUOYI DRAMA ORIGINAL</small></div>
+            <div class="scene-copy"><span>SCENE 01 · TAKE 03</span><strong>{{ t('login.hero.sceneStrong') }}</strong><small>RUOYI DRAMA ORIGINAL</small></div>
             <div class="focus-ring"><el-icon><VideoPlay /></el-icon></div>
           </div>
-          <div class="floating-card card-script"><span><el-icon><EditPen /></el-icon></span><div><strong>剧本已完成</strong><small>12 场 · 48 个镜头</small></div><b>100%</b></div>
-          <div class="floating-card card-assets"><span><el-icon><Avatar /></el-icon></span><div><strong>角色资产</strong><small>风格一致性已锁定</small></div><i><el-icon><Check /></el-icon></i></div>
+          <div class="floating-card card-script"><span><el-icon><EditPen /></el-icon></span><div><strong>{{ t('login.floatingCard.scriptTitle') }}</strong><small>{{ t('login.floatingCard.scriptSub') }}</small></div><b>100%</b></div>
+          <div class="floating-card card-assets"><span><el-icon><Avatar /></el-icon></span><div><strong>{{ t('login.floatingCard.assetsTitle') }}</strong><small>{{ t('login.floatingCard.assetsSub') }}</small></div><i><el-icon><Check /></el-icon></i></div>
           <div class="timeline"><span>00:00</span><div><i /><b /><i /><i /><b /><i /></div><span>02:36</span></div>
         </div>
 
         <div class="feature-strip">
-          <div><span>01</span><strong>剧本创作</strong><small>故事结构与对白</small></div>
+          <div><span>01</span><strong>{{ t('login.feature.scriptTitle') }}</strong><small>{{ t('login.feature.scriptSub') }}</small></div>
           <i />
-          <div><span>02</span><strong>视觉资产</strong><small>角色与场景统一</small></div>
+          <div><span>02</span><strong>{{ t('login.feature.assetsTitle') }}</strong><small>{{ t('login.feature.assetsSub') }}</small></div>
           <i />
-          <div><span>03</span><strong>镜头生成</strong><small>分镜到最终成片</small></div>
+          <div><span>03</span><strong>{{ t('login.feature.shotsTitle') }}</strong><small>{{ t('login.feature.shotsSub') }}</small></div>
         </div>
       </section>
 
@@ -93,32 +99,32 @@ async function handleLogin() {
           <div class="panel-number">01 / LOGIN</div>
           <div class="panel-heading">
             <span class="panel-icon"><el-icon><Clapperboard /></el-icon></span>
-            <div><h2>欢迎回来</h2><p>登录后继续你的短剧创作</p></div>
+            <div><h2>{{ t('login.panel.heading') }}</h2><p>{{ t('login.panel.sub') }}</p></div>
           </div>
 
-          <div class="access-note"><el-icon><Connection /></el-icon><span>使用 RuoYi AI 统一账号安全登录</span><b>已连接</b></div>
+          <div class="access-note"><el-icon><Connection /></el-icon><span>{{ t('login.access.note') }}</span><b>{{ t('login.access.connected') }}</b></div>
 
           <el-alert v-if="errorMessage" class="login-error" :title="errorMessage" type="error" :closable="false" show-icon />
 
           <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="handleLogin">
-            <el-form-item label="用户名" prop="username">
-              <el-input v-model="form.username" size="large" placeholder="输入你的用户名" autocomplete="username" @input="errorMessage = ''">
+            <el-form-item :label="t('login.form.usernameLabel')" prop="username">
+              <el-input v-model="form.username" size="large" :placeholder="t('login.form.usernamePlaceholder')" autocomplete="username" @input="errorMessage = ''">
                 <template #prefix><el-icon><User /></el-icon></template>
               </el-input>
             </el-form-item>
-            <el-form-item label="密码" prop="password">
-              <el-input v-model="form.password" size="large" type="password" show-password placeholder="输入登录密码" autocomplete="current-password" @input="errorMessage = ''">
+            <el-form-item :label="t('login.form.passwordLabel')" prop="password">
+              <el-input v-model="form.password" size="large" type="password" show-password :placeholder="t('login.form.passwordPlaceholder')" autocomplete="current-password" @input="errorMessage = ''">
                 <template #prefix><el-icon><Lock /></el-icon></template>
               </el-input>
             </el-form-item>
             <el-button class="submit" type="primary" size="large" native-type="submit" :loading="submitting">
-              <span>{{ submitting ? '正在进入工作台' : '进入创作中心' }}</span><el-icon v-if="!submitting"><Right /></el-icon>
+              <span>{{ submitting ? t('login.submit.loading') : t('login.submit.idle') }}</span><el-icon v-if="!submitting"><Right /></el-icon>
             </el-button>
           </el-form>
 
           <div class="panel-footer">
-            <span><el-icon><Lock /></el-icon>令牌加密存储</span>
-            <span><el-icon><Cloudy /></el-icon>项目云端同步</span>
+            <span><el-icon><Lock /></el-icon>{{ t('login.footer.tokenEncrypted') }}</span>
+            <span><el-icon><Cloudy /></el-icon>{{ t('login.footer.cloudSync') }}</span>
           </div>
         </div>
         <p class="copyright">RUOYI DRAMA · AI SHORT FILM PRODUCTION SUITE</p>
@@ -165,6 +171,7 @@ async function handleLogin() {
 .system-state { display: flex; gap: 7px; align-items: center; font: 700 9px/1 monospace; letter-spacing: .13em; color: #64748b; }
 .system-state b { width: 6px; height: 6px; background: #54c18b; border-radius: 50%; box-shadow: 0 0 0 4px rgb(84 193 139 / 10%), 0 0 12px rgb(84 193 139 / 55%); }
 .system-state span { color: #cbd5e1; }
+.login-header-right { display: flex; gap: 14px; align-items: center; }
 
 .login-main {
   position: relative;
