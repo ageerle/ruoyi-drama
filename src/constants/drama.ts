@@ -26,9 +26,12 @@ export function getArtStyleOptions(t: ComposerTranslation): LabeledOption<string
 
 export function getVideoRatioOptions(t: ComposerTranslation): LabeledOption<ShortDramaAspectRatio>[] {
   return [
-    { label: t('shortDrama.options.ratio.vertical'), value: '9:16' },
     { label: t('shortDrama.options.ratio.horizontal'), value: '16:9' },
+    { label: t('shortDrama.options.ratio.landscapeClassic'), value: '4:3' },
     { label: t('shortDrama.options.ratio.square'), value: '1:1' },
+    { label: t('shortDrama.options.ratio.portraitClassic'), value: '3:4' },
+    { label: t('shortDrama.options.ratio.vertical'), value: '9:16' },
+    { label: t('shortDrama.options.ratio.ultrawide'), value: '21:9' },
   ];
 }
 

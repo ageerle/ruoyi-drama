@@ -508,4 +508,3 @@ async function submitKey(formEl?: FormInstance) {
   .empty-projects { align-items: flex-start; flex-wrap: wrap; }
 }
 </style>
-

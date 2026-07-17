@@ -184,6 +184,9 @@ export default {
         vertical: '竖屏 9:16',
         horizontal: '横屏 16:9',
         square: '方形 1:1',
+        landscapeClassic: '横屏 4:3',
+        portraitClassic: '竖屏 3:4',
+        ultrawide: '超宽屏 21:9',
       },
       transition: {
         none: '无转场',

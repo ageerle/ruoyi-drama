@@ -181,6 +181,9 @@ const enUS: MessageSchema = {
         vertical: 'Vertical 9:16',
         horizontal: 'Horizontal 16:9',
         square: 'Square 1:1',
+        landscapeClassic: 'Landscape 4:3',
+        portraitClassic: 'Portrait 3:4',
+        ultrawide: 'Ultrawide 21:9',
       },
       transition: {
         none: 'No transition',

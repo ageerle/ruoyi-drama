@@ -31,6 +31,7 @@ import {
   deleteShortDramaProject,
   downloadShortDramaVideo,
   generateAllVideos,
+  generateShortDramaAudio,
   generateStoryboardVideo,
   getPrediction,
   getShortDramaComposeStatus,
@@ -40,12 +41,16 @@ import {
   retrieveStoryboardVideo,
   saveShortDramaProject,
   saveShortDramaScript,
+  saveShortDramaAudio,
+  saveShortDramaAppearance,
+  saveShortDramaLocation,
   saveShortDramaStoryboard,
   selectAppearanceImage,
   selectLocationImage,
   startImageGeneration,
   undoAppearanceImage,
   undoLocationImage,
+  updateShortDramaAudio,
   uploadReferenceImage,
 } from '@/api/shortDrama';
 import { getModelList } from '@/api/model';
@@ -53,6 +58,7 @@ import { useUserStore } from '@/stores';
 import type { GetSessionListVO } from '@/api/model/types';
 import type {
   ShortDramaAspectRatio,
+  ShortDramaAudio,
   ShortDramaCharacter,
   ShortDramaCharacterAppearance,
   ShortDramaComposeVideoRequest,
@@ -79,6 +85,7 @@ type StepName = 'idea' | 'script' | 'assets' | 'storyboard';
 const route = useRoute();
 const userStore = useUserStore();
 const { t } = useI18n();
+const storyboardToolsCollapsed = ref(false);
 
 const workflowSteps = computed<Array<{ name: StepName; index: string; title: string; desc: string }>>(() => [
   { name: 'idea', index: '01', title: t('shortDrama.workflow.idea.title'), desc: t('shortDrama.workflow.idea.desc') },
@@ -88,9 +95,12 @@ const workflowSteps = computed<Array<{ name: StepName; index: string; title: str
 ]);
 
 const videoRatioOptions: Array<{ label: string; value: ShortDramaAspectRatio }> = [
-  { label: '竖屏 9:16', value: '9:16' },
   { label: '横屏 16:9', value: '16:9' },
+  { label: '横屏 4:3', value: '4:3' },
   { label: '方形 1:1', value: '1:1' },
+  { label: '竖屏 3:4', value: '3:4' },
+  { label: '竖屏 9:16', value: '9:16' },
+  { label: '超宽屏 21:9', value: '21:9' },
 ];
 
 const transitionOptions: Array<{ label: string; value: ShortDramaTransitionType }> = [
@@ -147,16 +157,29 @@ const cameraMoveOptions = [
 type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger' | '';
 const roleLevelLabels: Record<string, string> = { S: '主角', A: '核心配角', B: '重要配角', C: '次要', D: '群众' };
 const roleLevelTagMap: Record<string, TagType> = { S: 'danger', A: 'warning', B: 'info', C: '', D: 'info' };
+const roleLevelOrder: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, D: 4 };
 
 const projects = ref<ShortDramaProject[]>([]);
 const models = ref<GetSessionListVO[]>([]);
 const videoModels = ref<GetSessionListVO[]>([]);
 const imageModels = ref<GetSessionListVO[]>([]);
+const audioModels = ref<GetSessionListVO[]>([]);
 const currentProjectId = ref<SnowflakeId | null>(null);
 const detail = ref<ShortDramaDetail | null>(null);
 const characters = ref<ShortDramaCharacter[]>([]);
 const locations = ref<ShortDramaLocation[]>([]);
+const audios = ref<ShortDramaAudio[]>([]);
+const narrationDraft = ref('');
+const generatingNarration = ref(false);
+const assetPromptsEditing = ref(false);
+const savingAssetPrompts = ref(false);
 const storyboardDrafts = ref<ShortDramaStoryboard[]>([]);
+const sortedCharacters = computed(() => characters.value
+  .map((character, index) => ({ character, index }))
+  .sort((left, right) =>
+    (roleLevelOrder[left.character.roleLevel || ''] ?? 99) - (roleLevelOrder[right.character.roleLevel || ''] ?? 99)
+    || left.index - right.index)
+  .map(item => item.character));
 const activeStage = ref<StageName>('script');
 const activeStep = ref<StepName>('idea');
 const showAdvanced = ref(false);
@@ -172,12 +195,15 @@ const polishingScript = ref(false);
 const generatingVideo = ref<Record<SnowflakeId, boolean>>({});
 const generatingAllVideos = ref(false);
 const savingStoryboard = ref(false);
+const editingStoryboardGuidance = ref<Record<string, boolean>>({});
 const pollingTimers = ref<Record<SnowflakeId, ReturnType<typeof setInterval>>>({});
 const composeForm = ref<ShortDramaComposeVideoRequest>({
-  transitionType: 'dissolve',
-  transitionDurationSeconds: 0.5,
+  transitionType: 'fade',
+  transitionDurationSeconds: 0.3,
   aspectRatio: '9:16',
   storyboardIds: [],
+  narrationAudioId: undefined,
+  watermark: true,
 });
 const composeStoryboardIds = ref<SnowflakeId[]>([]);
 const composeResult = ref<ShortDramaComposeVideoResult | null>(null);
@@ -191,6 +217,7 @@ const sseProgressMsg = ref('');
   const sseStreamPhoto = ref('');
   const sseStreamActing = ref('');
   const showDualStream = ref(false);
+const sseStreamPanels = ref<ShortDramaStoryboard[]>([]);
 const sseProgressSteps = ref<ProgressStep[]>([
   { phase: 'polish', label: '剧本打磨', status: 'pending' },
   { phase: 'assets', label: '资产分析', status: 'pending' },
@@ -207,6 +234,7 @@ const ideaForm = ref({
   artStyle: 'realistic',
   videoModel: '',
   imageModel: '',
+  audioModel: '',
 });
 
 const scriptForm = ref<ShortDramaScript>({
@@ -219,6 +247,45 @@ const scriptForm = ref<ShortDramaScript>({
 });
 
 const hasProject = computed(() => !!currentProjectId.value);
+const narrationAudio = computed(() => audios.value.find(audio => audio.audioType === 'narration'));
+
+function extractNarration(scriptText: string): string {
+  const marker = /^\s*(?:[【\[]?(?:旁白|画外音|旁述)[】\]]?|(?:V\.?O\.?|O\.?S\.?))\s*[：:]\s*(.+?)\s*$/i;
+  return scriptText.split(/\r?\n/)
+    .map(line => line.match(marker)?.[1]?.trim() || '')
+    .filter(Boolean)
+    .join('\n');
+}
+
+async function handleGenerateNarration() {
+  if (!currentProjectId.value || !narrationDraft.value.trim()) return;
+  if (!ideaForm.value.audioModel) {
+    ElMessage.error('未配置可用的默认语音模型');
+    return;
+  }
+  generatingNarration.value = true;
+  try {
+    const current = narrationAudio.value;
+    const payload: ShortDramaAudio = {
+      ...(current || {}),
+      projectId: currentProjectId.value,
+      name: '旁白',
+      audioType: 'narration',
+      text: narrationDraft.value.trim(),
+    };
+    const saved = current?.id ? await updateShortDramaAudio(payload) : await saveShortDramaAudio(payload);
+    const generated = await generateShortDramaAudio(saved.id!, ideaForm.value.audioModel);
+    const index = audios.value.findIndex(audio => audio.audioType === 'narration');
+    if (index >= 0) Object.assign(audios.value[index], generated);
+    else audios.value.push(generated);
+    composeForm.value.narrationAudioId = generated.id;
+    ElMessage.success('旁白生成完成，合成时将自动使用');
+  } catch (error: any) {
+    ElMessage.error(error.message || '旁白生成失败');
+  } finally {
+    generatingNarration.value = false;
+  }
+}
 const canGenerate = computed(() => !!ideaForm.value.idea.trim() && !!ideaForm.value.model && !generating.value);
 const maxReachedStepIndex = computed(() => workflowSteps.value.findIndex(item => item.name === maxReachedStep.value));
 const completedStoryboards = computed(() => storyboardDrafts.value.filter(
@@ -292,13 +359,17 @@ function getStoryboardRefImages(item: ShortDramaStoryboard) {
   for (const ref of chars) {
     const ch = characters.value.find(c => c.name === ref.name);
     if (ch?.appearances) {
-      for (const ap of ch.appearances) {
-        const urls = parseJsonStrArray(ap.imageUrls);
-        if (urls.length === 0) continue;
-        const idx = ap.selectedImageIndex != null && ap.selectedImageIndex >= 0 && ap.selectedImageIndex < urls.length ? ap.selectedImageIndex : 0;
-        charImgs.push({ name: ref.name, url: urls[idx] });
-        break;
-      }
+      const appearanceName = ref.appearance?.trim();
+      const matched = ch.appearances.find(ap => ap.changeReason?.trim() === appearanceName)
+        || ch.appearances.find(ap => ap.changeReason?.includes(appearanceName || '__no_match__'))
+        || ch.appearances[0];
+      const urls = parseJsonStrArray(matched?.imageUrls);
+      const idx = matched?.selectedImageIndex != null
+        && matched.selectedImageIndex >= 0
+        && matched.selectedImageIndex < urls.length
+        ? matched.selectedImageIndex : 0;
+      const url = urls[idx] || matched?.referenceImageUrl || ch.referenceImageUrl;
+      if (url) charImgs.push({ name: `${ref.name} · ${ref.appearance || '初始形象'}`, url });
     }
   }
   let locImg: string | null = null;
@@ -320,17 +391,20 @@ function getStoryboardRefImages(item: ShortDramaStoryboard) {
 async function refreshModels() {
   loadingModels.value = true;
   try {
-    const [chatRes, videoRes, imageRes] = await Promise.all([
+    const [chatRes, videoRes, imageRes, audioRes] = await Promise.all([
       getModelList({ category: 'chat' }),
       getModelList({ category: 'video' }),
       getModelList({ category: 'image' }),
+      getModelList({ category: 'audio' }),
     ]);
     models.value = readList<GetSessionListVO>(chatRes);
     videoModels.value = readList<GetSessionListVO>(videoRes);
     imageModels.value = readList<GetSessionListVO>(imageRes);
+    audioModels.value = readList<GetSessionListVO>(audioRes);
     if (!ideaForm.value.model && models.value[0]?.modelName) ideaForm.value.model = models.value[0].modelName;
     if (!ideaForm.value.videoModel && videoModels.value[0]?.modelName) ideaForm.value.videoModel = videoModels.value[0].modelName;
     if (!ideaForm.value.imageModel && imageModels.value[0]?.modelName) ideaForm.value.imageModel = imageModels.value[0].modelName;
+    if (!ideaForm.value.audioModel && audioModels.value[0]?.modelName) ideaForm.value.audioModel = audioModels.value[0].modelName;
   } catch { ElMessage.error('获取模型列表失败，请先检查模型配置'); }
   finally { loadingModels.value = false; }
 }
@@ -370,6 +444,10 @@ async function loadDetail(projectId: SnowflakeId) {
     : { projectId, scriptName: '', scriptText: '', outlineText: '', tone: '', sourceType: 'manual' };
   characters.value = (res as any).characters || [];
   locations.value = (res as any).locations || [];
+  audios.value = (res as any).audios || [];
+  const existingNarration = audios.value.find(audio => audio.audioType === 'narration');
+  narrationDraft.value = existingNarration?.text || extractNarration(scriptForm.value.scriptText || '');
+  composeForm.value.narrationAudioId = existingNarration?.audioUrl ? existingNarration.id : undefined;
   storyboardDrafts.value = res.storyboards || [];
   currentProjectId.value = projectId;
   composeStoryboardIds.value = storyboardDrafts.value
@@ -450,6 +528,7 @@ function resetSseProgress() {
   sseStreamPhoto.value = '';
   sseStreamActing.value = '';
   showDualStream.value = false;
+  sseStreamPanels.value = [];
   sseProgressSteps.value.forEach(s => s.status = 'pending');
 }
 
@@ -605,6 +684,7 @@ async function handleGenerateStoryboard() {
   regeneratingStoryboard.value = true;
   invalidateComposeView();
   resetSseProgress();
+  sseStreamPanels.value = [];
   sseProgressSteps.value.find(s => s.phase === 'polish')!.status = 'done';
   sseProgressSteps.value.find(s => s.phase === 'assets')!.status = 'done';
   sseProgressMsg.value = '正在连接分镜生成服务...';
@@ -660,6 +740,12 @@ async function handleGenerateStoryboard() {
               const element = document.querySelector('.sse-stream-text');
               if (element) element.scrollTop = element.scrollHeight;
             });
+          } else if (eventName === 'panel' && data.panel) {
+            // 增量分镜：第一个 panel 完成就展示，后续逐个追加渲染
+            const p = data.panel as ShortDramaStoryboard;
+            const idx = sseStreamPanels.value.findIndex(s => s.sceneNo === p.sceneNo);
+            if (idx >= 0) Object.assign(sseStreamPanels.value[idx], p);
+            else sseStreamPanels.value.push(p);
           } else if (eventName === 'complete') {
             completed = true;
           } else if (eventName === 'error') {
@@ -712,6 +798,7 @@ async function handleDeleteProject(projectId: SnowflakeId) {
     storyboardDrafts.value = [];
     characters.value = [];
     locations.value = [];
+    audios.value = [];
     scriptForm.value = { projectId: '', scriptName: '', scriptText: '', outlineText: '', tone: '', sourceType: 'manual' };
     activeStep.value = 'idea';
     maxReachedStep.value = 'idea';
@@ -1370,6 +1457,58 @@ async function handleUndoLocationImage(location: ShortDramaLocation) {
   } catch (e: any) { ElMessage.error(e.message || '撤销失败'); }
 }
 
+// ---- audio assets ----
+
+// 场景描述的可编辑副本（loc.descriptions 是 JSON 字符串，无法直接 v-model）
+const locationDescEdits = ref<Record<string, string[]>>({});
+function locationDescriptions(loc: ShortDramaLocation): string[] {
+  if (!loc.id) return [];
+  if (!locationDescEdits.value[loc.id]) {
+    // 新版场景只保留一个可编辑主描述；旧数据存在多个候选时兼容取第一条。
+    locationDescEdits.value[loc.id] = parseJsonStrArray(loc.descriptions).filter(Boolean).slice(0, 1);
+  }
+  return locationDescEdits.value[loc.id];
+}
+async function handleSaveAllAssetPrompts() {
+  savingAssetPrompts.value = true;
+  try {
+    const appearanceTasks = characters.value.flatMap(character => character.appearances || [])
+      .filter(appearance => appearance.id)
+      .map(appearance => saveShortDramaAppearance({
+        id: appearance.id,
+        characterId: appearance.characterId,
+        appearanceIndex: appearance.appearanceIndex,
+        changeReason: appearance.changeReason,
+        description: appearance.description,
+        referenceImageUrl: appearance.referenceImageUrl,
+        voice: appearance.voice,
+      }));
+    const locationTasks = locations.value.filter(location => location.id).map(location => {
+      location.descriptions = JSON.stringify(locationDescEdits.value[location.id!] || locationDescriptions(location));
+      return saveShortDramaLocation(location);
+    });
+    await Promise.all([...appearanceTasks, ...locationTasks]);
+    assetPromptsEditing.value = false;
+    ElMessage.success('角色和场景提示词已全部保存');
+  } catch (e: any) {
+    ElMessage.error(e.message || '提示词保存失败');
+  } finally {
+    savingAssetPrompts.value = false;
+  }
+}
+
+async function handleSaveStoryboardGuidance(item: ShortDramaStoryboard, field: 'photographyRules' | 'actingNotes') {
+  const raw = item[field];
+  try {
+    if (raw?.trim()) JSON.parse(raw);
+  } catch {
+    ElMessage.error(field === 'photographyRules' ? '摄影规则 JSON 格式不正确' : '表演指导 JSON 格式不正确');
+    return;
+  }
+  await handleSaveStoryboard(item);
+  editingStoryboardGuidance.value[`${item.id ?? item.sceneNo}-${field}`] = false;
+}
+
 onMounted(async () => {
   if (imageTaskChannel) imageTaskChannel.addEventListener('message', handleImageTaskBroadcast);
   const incomingIdea = typeof route.query.idea === 'string' ? route.query.idea.trim() : '';
@@ -1482,6 +1621,16 @@ onUnmounted(() => {
           <div v-else-if="sseStreamText" class="sse-stream-text">
             <pre>{{ sseStreamText }}</pre>
           </div>
+          <div v-if="sseStreamPanels.length" class="sse-stream-panels">
+            <div class="sse-col-label">已生成分镜（{{ sseStreamPanels.length }}）</div>
+            <div class="sse-panel-grid">
+              <div v-for="p in sseStreamPanels" :key="p.sceneNo" class="sse-panel-card">
+                <span class="sse-panel-no">#{{ p.sceneNo }}</span>
+                <span class="sse-panel-title">{{ p.sceneTitle || '未命名' }}</span>
+                <p v-if="p.sceneText" class="sse-panel-text">{{ p.sceneText }}</p>
+              </div>
+            </div>
+          </div>
           <div class="sse-steps">
             <div v-for="s in sseProgressSteps" :key="s.phase" class="sse-step" :class="s.status">
               <span class="sse-dot"></span>
@@ -1514,9 +1663,9 @@ onUnmounted(() => {
             </el-form-item>
 
             <el-form-item label="画面比例">
-              <el-radio-group v-model="ideaForm.videoRatio" class="ratio-group">
-                <el-radio-button v-for="item in videoRatioOptions" :key="item.value" :value="item.value">{{ item.label }}</el-radio-button>
-              </el-radio-group>
+              <el-select v-model="ideaForm.videoRatio" class="w-full" placeholder="选择画面比例">
+                <el-option v-for="item in videoRatioOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
             </el-form-item>
             <el-form-item label="视觉风格">
               <el-select v-model="ideaForm.artStyle" class="w-full">
@@ -1591,6 +1740,8 @@ onUnmounted(() => {
             <el-tag v-else type="success" size="small" effect="light">{{ imageModelLabel }}</el-tag>
             <span class="image-model-label" style="margin-left:12px">视觉风格</span>
             <el-tag type="primary" size="small" effect="light">{{ artStyleLabels[currentArtStyle] || currentArtStyle }}</el-tag>
+            <el-button v-if="!assetPromptsEditing" size="small" text type="primary" @click="assetPromptsEditing = true">编辑提示词</el-button>
+            <el-button v-else size="small" text type="primary" :loading="savingAssetPrompts" @click="handleSaveAllAssetPrompts">保存全部</el-button>
           </div>
         </div>
 
@@ -1598,7 +1749,7 @@ onUnmounted(() => {
         <div v-if="characters.length > 0" class="asset-section">
           <h3 class="asset-section-title">角色档案 ({{ characters.length }})</h3>
           <div class="asset-card-list">
-            <article v-for="ch in characters" :key="ch.id" class="asset-card">
+            <article v-for="ch in sortedCharacters" :key="ch.id" class="asset-card">
               <div class="asset-card-head">
                 <span class="asset-name">{{ ch.name }}</span>
                 <div class="asset-tags">
@@ -1612,10 +1763,10 @@ onUnmounted(() => {
               <p v-if="ch.personalityTags" class="asset-tags-line">
                 <el-tag v-for="tag in (ch.personalityTags || '').split(',').filter(Boolean)" :key="tag" size="small" class="personality-tag">{{ tag }}</el-tag>
               </p>
-              <p v-if="ch.visualDescription" class="asset-visual-desc">{{ ch.visualDescription }}</p>
               <!-- 子形象列表（含图片画廊） -->
-              <div v-if="ch.appearances?.length" class="appearance-list">
-                <div v-for="ap in ch.appearances" :key="ap.id" class="appearance-item">
+              <div v-if="ch.appearances?.length" class="appearance-carousel">
+                <div :id="`appearance-track-${ch.id}`" class="appearance-list">
+                  <div v-for="ap in ch.appearances" :key="ap.id" class="appearance-item">
                   <div class="appearance-item-header">
                     <span class="appearance-chip">{{ ap.changeReason || `形象 ${ap.appearanceIndex}` }}</span>
                     <div class="appearance-img-actions">
@@ -1633,6 +1784,15 @@ onUnmounted(() => {
                       </el-button>
                     </div>
                   </div>
+                  <el-input
+                    v-model="ap.description"
+                    type="textarea"
+                    :autosize="{ minRows: 2, maxRows: 6 }"
+                    size="small"
+                    placeholder="形象视觉提示词（生成图片用，可编辑）"
+                    :disabled="!assetPromptsEditing"
+                    style="margin:6px 0;"
+                  />
                   <div class="asset-reference-input">
                     <span class="asset-reference-label">上传照片作为参考</span>
                     <label class="reference-upload-button" :class="{ disabled: uploadingReferenceImage[`appearance-${ap.id}`] }">
@@ -1680,6 +1840,7 @@ onUnmounted(() => {
                       </div>
                     </el-tooltip>
                   </div>
+                  </div>
                 </div>
               </div>
             </article>
@@ -1695,18 +1856,33 @@ onUnmounted(() => {
                 <span class="asset-name">{{ loc.name }}</span>
                 <el-tag v-if="loc.hasCrowd" size="small" type="warning">有群演</el-tag>
               </div>
-              <p v-if="loc.summary" class="asset-intro">{{ loc.summary }}</p>
+              <el-input
+                v-model="loc.summary"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: 3 }"
+                size="small"
+                placeholder="场景简要说明（可编辑）"
+                :disabled="!assetPromptsEditing"
+                style="margin:4px 0;"
+              />
               <div v-if="loc.availableSlots" class="slots-block">
                 <span class="slots-label">可站位置：</span>
                 <ul class="slots-list">
                   <li v-for="(slot, i) in parseJsonField<string[]>(loc.availableSlots) || []" :key="i">{{ slot }}</li>
                 </ul>
               </div>
-              <div v-if="loc.descriptions" class="descs-block">
-                <span class="slots-label">场景描述：</span>
-                <ul class="slots-list">
-                  <li v-for="(desc, i) in (parseJsonField<string[]>(loc.descriptions) || []).slice(0, 2)" :key="i">{{ desc }}</li>
-                </ul>
+              <div class="descs-block">
+                <span class="slots-label">场景描述（可编辑）：</span>
+                <el-input
+                  v-for="(_, i) in locationDescriptions(loc)"
+                  :key="i"
+                  v-model="locationDescriptions(loc)[i]"
+                  type="textarea"
+                  :autosize="{ minRows: 2, maxRows: 5 }"
+                  size="small"
+                  :disabled="!assetPromptsEditing"
+                  style="margin:4px 0;"
+                />
               </div>
               <!-- 场景图片画廊 -->
               <div class="location-image-section">
@@ -1789,14 +1965,14 @@ onUnmounted(() => {
       </section>
 
       <!-- ====== Step 04: Storyboard ====== -->
-      <section v-if="activeStep === 'storyboard' && hasProject" class="form-step-panel">
-        <div class="section-head">
-          <div>
-            <span class="section-kicker">Step 04</span>
+      <section v-if="activeStep === 'storyboard' && hasProject" class="form-step-panel storyboard-panel">
+        <div class="section-head storyboard-section-head" :class="{ collapsed: storyboardToolsCollapsed }">
+          <div class="storyboard-section-title">
+            <span v-show="!storyboardToolsCollapsed" class="section-kicker">Step 04</span>
             <h2>分镜确认</h2>
-            <p>逐个检查镜头标题、角色站位、场景、摄影规则、表演指导和视频提示词。</p>
+            <p v-show="!storyboardToolsCollapsed">逐个检查镜头标题、角色站位、场景、摄影规则、表演指导和视频提示词。</p>
           </div>
-          <div class="storyboard-header-actions">
+          <div v-show="!storyboardToolsCollapsed" class="storyboard-header-actions">
             <el-form-item label="视频模型" class="video-model-inline">
               <el-select v-model="ideaForm.videoModel" filterable :loading="loadingModels" placeholder="选择视频模型">
                 <el-option v-for="item in videoModels" :key="item.id ?? item.modelName" :label="item.modelDescribe || item.modelName || ''" :value="item.modelName || ''" />
@@ -1809,9 +1985,13 @@ onUnmounted(() => {
               </el-button>
             </el-tooltip>
           </div>
+          <el-button class="storyboard-collapse-button" text @click="storyboardToolsCollapsed = !storyboardToolsCollapsed">
+            <el-icon><ArrowDown v-if="storyboardToolsCollapsed" /><ArrowUp v-else /></el-icon>
+            {{ storyboardToolsCollapsed ? '展开顶部工具' : '收起顶部工具' }}
+          </el-button>
         </div>
 
-        <div v-if="storyboardDrafts.length > 0" class="composition-toolbar">
+        <div v-if="storyboardDrafts.length > 0 && !storyboardToolsCollapsed" class="composition-toolbar">
           <div class="composition-toolbar-main">
             <div class="composition-heading">
               <strong>成片合成</strong>
@@ -1859,6 +2039,13 @@ onUnmounted(() => {
               >
                 <el-option v-for="ratio in videoRatioOptions" :key="ratio.value" :label="ratio.label" :value="ratio.value" />
               </el-select>
+              <el-switch
+                v-model="composeForm.watermark"
+                :disabled="composeBusy"
+                active-text="水印"
+                inline-prompt
+                style="--el-switch-on-color: var(--el-color-primary);"
+              />
               <el-tooltip :disabled="canComposeVideo" :content="composeDisabledReason" placement="top">
                 <span class="compose-button-wrap">
                   <el-button
@@ -1872,6 +2059,26 @@ onUnmounted(() => {
                   </el-button>
                 </span>
               </el-tooltip>
+            </div>
+          </div>
+
+          <div v-if="narrationDraft" class="narration-panel">
+            <div class="narration-heading">
+              <strong>旁白内容</strong>
+              <span v-if="narrationAudio?.audioUrl">已生成，合成时自动使用</span>
+            </div>
+            <el-input
+              v-model="narrationDraft"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 6 }"
+              placeholder="编辑旁白内容"
+              :disabled="composeBusy || generatingNarration"
+            />
+            <div class="narration-actions">
+              <el-button size="small" type="primary" :loading="generatingNarration" :disabled="composeBusy" @click="handleGenerateNarration">
+                {{ narrationAudio?.audioUrl ? '重新生成旁白' : '生成旁白' }}
+              </el-button>
+              <el-button v-if="narrationAudio?.audioUrl" size="small" text type="success" @click="openExternal(narrationAudio.audioUrl)">试听</el-button>
             </div>
           </div>
 
@@ -1941,14 +2148,34 @@ onUnmounted(() => {
               </span>
             </div>
 
-            <el-input v-model="item.sceneText" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="镜头画面描述" />
-            <el-input v-model="item.videoPrompt" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" placeholder="视频提示词" />
+            <div class="video-prompt-field">
+              <span class="video-prompt-label">视频提示词</span>
+              <el-input v-model="item.videoPrompt" type="textarea" :autosize="{ minRows: 4, maxRows: 8 }" placeholder="请输入视频提示词" />
+            </div>
 
             <!-- Photography rules -->
             <details v-if="item.photographyRules" class="rules-detail">
-              <summary>摄影规则</summary>
+              <summary>
+                <span>摄影规则</span>
+                <el-button
+                  v-if="!editingStoryboardGuidance[`${item.id ?? item.sceneNo}-photographyRules`]"
+                  size="small" text type="primary"
+                  @click.stop.prevent="editingStoryboardGuidance[`${item.id ?? item.sceneNo}-photographyRules`] = true"
+                >编辑</el-button>
+                <el-button
+                  v-else size="small" text type="primary" :loading="savingStoryboard"
+                  @click.stop.prevent="handleSaveStoryboardGuidance(item, 'photographyRules')"
+                >保存</el-button>
+              </summary>
               <div class="rules-body">
-                <template v-if="parseJsonField<PhotographyRule>(item.photographyRules)">
+                <el-input
+                  v-if="editingStoryboardGuidance[`${item.id ?? item.sceneNo}-photographyRules`]"
+                  v-model="item.photographyRules"
+                  type="textarea"
+                  :autosize="{ minRows: 6, maxRows: 14 }"
+                  class="guidance-json-editor"
+                />
+                <template v-else-if="parseJsonField<PhotographyRule>(item.photographyRules)">
                   <p v-if="parseJsonField<PhotographyRule>(item.photographyRules)!.scene_summary">
                     场景：{{ parseJsonField<PhotographyRule>(item.photographyRules)!.scene_summary }}
                   </p>
@@ -1972,16 +2199,31 @@ onUnmounted(() => {
 
             <!-- Acting notes -->
             <details v-if="item.actingNotes" class="rules-detail">
-              <summary>表演指导</summary>
+              <summary>
+                <span>表演指导</span>
+                <el-button
+                  v-if="!editingStoryboardGuidance[`${item.id ?? item.sceneNo}-actingNotes`]"
+                  size="small" text type="primary"
+                  @click.stop.prevent="editingStoryboardGuidance[`${item.id ?? item.sceneNo}-actingNotes`] = true"
+                >编辑</el-button>
+                <el-button
+                  v-else size="small" text type="primary" :loading="savingStoryboard"
+                  @click.stop.prevent="handleSaveStoryboardGuidance(item, 'actingNotes')"
+                >保存</el-button>
+              </summary>
               <div class="rules-body">
-                <p v-for="(an, ai) in parseJsonField<ActingNote[]>(item.actingNotes) || []" :key="ai" class="acting-line">
+                <el-input
+                  v-if="editingStoryboardGuidance[`${item.id ?? item.sceneNo}-actingNotes`]"
+                  v-model="item.actingNotes"
+                  type="textarea"
+                  :autosize="{ minRows: 5, maxRows: 12 }"
+                  class="guidance-json-editor"
+                />
+                <p v-for="(an, ai) in parseJsonField<ActingNote[]>(item.actingNotes) || []" v-else :key="ai" class="acting-line">
                   <strong>{{ an.name }}</strong>：{{ an.acting }}
                 </p>
               </div>
             </details>
-
-            <!-- Image prompt -->
-            <el-input v-if="item.imagePrompt" v-model="item.imagePrompt" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="图片提示词" />
 
             <!-- Source text -->
             <p v-if="item.sourceText" class="source-text-ref">
@@ -2053,8 +2295,8 @@ onUnmounted(() => {
 .short-drama-page {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: 304px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
   width: 100%;
   height: calc(100vh - var(--header-container-default-heigth));
   min-height: 0;
@@ -2139,7 +2381,6 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
 .idea-step.expanded .idea-field :deep(.el-textarea__inner) { height: clamp(110px, 15vh, 156px); min-height: 110px !important; }
 .single-step-form, .script-grid, .storyboard-list { min-height: 0; overflow: auto; }
 .advanced-options { display: grid; grid-template-columns: repeat(2, minmax(200px, 1fr)); gap: 12px 16px; align-items: start; overflow: hidden; padding: 12px; background: #f8fafc; border: 1px solid #e4e9f1; border-radius: 8px; :deep(.el-form-item) { min-width: 0; margin-bottom: 0; } }
-.ratio-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; height: 34px; :deep(.el-radio-button__inner) { width: 100%; height: 34px; min-height: 34px; padding-right: 8px; padding-left: 8px; overflow: hidden; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; background: #fff; border-color: #d8dee8; } :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) { color: #fff; background: #2563eb; border-color: #2563eb; box-shadow: -1px 0 0 0 #2563eb; } }
 
 :deep(.el-button--primary) { --el-button-bg-color: #2563eb; --el-button-border-color: #2563eb; --el-button-hover-bg-color: #1d4ed8; --el-button-hover-border-color: #1d4ed8; --el-button-active-bg-color: #1e40af; --el-button-active-border-color: #1e40af; box-shadow: 0 7px 18px rgb(37 99 235 / 18%); }
 
@@ -2164,6 +2405,12 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
 .sse-stream-col { flex: 1; min-width: 0; }
 .sse-col-label { font-size: 12px; font-weight: 600; color: #5a6a7e; margin-bottom: 6px; text-align: left; }
 .sse-stream-text.dual { max-height: 180px; margin: 0; }
+.sse-stream-panels { width: 100%; margin-top: 12px; text-align: left; }
+.sse-panel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 6px; }
+.sse-panel-card { padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.sse-panel-no { display: inline-block; min-width: 28px; font-weight: 600; color: #2563eb; margin-right: 6px; }
+.sse-panel-title { font-size: 13px; font-weight: 500; color: #334155; }
+.sse-panel-text { font-size: 12px; color: #64748b; margin: 4px 0 0; line-height: 1.5; max-height: 72px; overflow: hidden; }
 .sse-steps { display: flex; flex-direction: column; gap: 5px; text-align: left; }
 .sse-step { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 13px; border-radius: 6px; background: #f8fafc; color: #b0b8c4; transition: all .3s; }
 .sse-step .sse-dot { width: 8px; height: 8px; border-radius: 50%; background: #d8dee8; flex-shrink: 0; }
@@ -2193,8 +2440,9 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
 .asset-tags-line { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 0; }
 .personality-tag { background: #f0f4f8; border-color: #d8dee8; color: #5a6474; }
 .asset-visual-desc { font-size: 12px; color: #4b5563; line-height: 1.65; margin-top: 2px; }
-.appearance-list { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
-.appearance-item { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; transition: border-color .2s; }
+.appearance-carousel { position: relative; min-width: 0; margin-top: 6px; }
+.appearance-list { display: flex; min-width: 0; gap: 12px; overflow-x: auto; padding: 2px; scrollbar-width: thin; scroll-behavior: smooth; scroll-snap-type: x mandatory; }
+.appearance-item { flex: 0 0 calc(100% - 4px); min-width: 0; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; scroll-snap-align: start; transition: border-color .2s; }
 .appearance-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px; }
 .appearance-chip { font-size: 13px; padding: 4px 12px; background: #eef2f8; border-radius: 999px; color: #3a4454; font-weight: 650; letter-spacing: .01em; }
 .appearance-img-actions { display: flex; gap: 6px; flex-shrink: 0; }
@@ -2265,8 +2513,21 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
 .descs-block { margin-top: 8px; }
 
 // ---- Storyboard ----
-.storyboard-list { grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); gap: 14px; margin-top: 18px; }
-.storyboard-card { min-width: 0; align-content: start; padding: 14px; background: #fbfcfd; border: 1px solid #e5e7eb; border-radius: 8px; display: grid; gap: 10px; }
+// 分镜面板：标题与合成工具条固定在顶部，列表区独立滚动并占满剩余高度
+.form-step-panel.storyboard-panel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: stretch;
+  overflow: hidden;
+  > .storyboard-list {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding-right: 6px;
+  }
+}
+.storyboard-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 18px; }
+.storyboard-card { min-width: 0; align-content: start; padding: 18px; background: #fbfcfd; border: 1px solid #e5e7eb; border-radius: 8px; display: grid; gap: 12px; }
 .storyboard-card-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
 .scene-no-badge { font-size: 14px; font-weight: 750; color: #242a33; }
 .scene-tags { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
@@ -2282,8 +2543,11 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
 
 .characters-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .character-chip { font-size: 12px; padding: 3px 10px; background: #e8f0fe; border: 1px solid #c8ddf8; border-radius: 6px; color: #345681; small { color: #6889a8; margin-left: 2px; } em { display: block; font-style: normal; font-size: 11px; color: #8a9fb5; margin-top: 2px; } }
+.video-prompt-field { display: grid; gap: 6px; min-width: 0; }
+.video-prompt-label { color: #475569; font-size: 13px; font-weight: 650; }
 
-.rules-detail { margin-top: 2px; summary { font-size: 12px; font-weight: 650; color: #5b6f95; cursor: pointer; padding: 4px 0; } .rules-body { margin-top: 6px; padding: 10px; background: #f8fafc; border-radius: 6px; font-size: 12px; line-height: 1.6; color: #4b5563; p { margin-top: 2px; } } }
+.rules-detail { margin-top: 2px; summary { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; color: #5b6f95; cursor: pointer; padding: 4px 0; :deep(.el-button) { margin-left: auto; } } .rules-body { margin-top: 6px; padding: 10px; background: #f8fafc; border-radius: 6px; font-size: 12px; line-height: 1.6; color: #4b5563; p { margin-top: 2px; } } }
+.guidance-json-editor :deep(.el-textarea__inner) { font-family: Consolas, 'Courier New', monospace; font-size: 12px; }
 .photo-chars { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .photo-char-item { font-size: 11px; padding: 3px 8px; background: #e8f0fe; border-radius: 4px; color: #345681; }
 .acting-line { margin-top: 4px !important; strong { color: #242a33; } }
@@ -2305,6 +2569,11 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
 .video-done-label { font-size: 13px; font-weight: 650; color: #166534; }
 .video-download-btn { text-decoration: none; }
 .storyboard-header-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.storyboard-section-head { flex-wrap: nowrap; }
+.storyboard-section-title { min-width: 0; }
+.storyboard-collapse-button { flex: 0 0 auto; margin-left: auto; }
+.storyboard-section-head.collapsed { align-items: center; }
+.storyboard-section-head.collapsed .storyboard-section-title { display: flex; align-items: center; }
 .video-model-inline { margin-bottom: 0; min-width: 200px; }
 .composition-toolbar { display: grid; gap: 14px; margin-top: 18px; padding: 16px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
 .composition-toolbar-main { display: grid; grid-template-columns: minmax(150px, 0.4fr) minmax(0, 1.6fr); gap: 18px; align-items: center; }
@@ -2312,6 +2581,9 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
 .composition-heading strong { color: #202631; font-size: 15px; }
 .composition-heading span, .composition-duration { color: #667085; font-size: 13px; }
 .composition-controls { display: flex; min-width: 0; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; }
+.narration-panel { display: grid; grid-template-columns: minmax(120px, 0.3fr) minmax(0, 1.5fr) auto; gap: 12px; align-items: center; padding: 12px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; }
+.narration-heading { display: grid; gap: 3px; strong { color: #202631; font-size: 13px; } span { color: #16a34a; font-size: 11px; } }
+.narration-actions { display: flex; align-items: center; gap: 6px; }
 .transition-segmented { flex: 0 1 330px; min-width: 300px; }
 .transition-duration-select { width: 96px; }
 .compose-ratio-select { width: 128px; }
@@ -2344,6 +2616,7 @@ p { margin-top: 6px; font-size: 13px; line-height: 1.65; color: #6b7280; }
   .step-item:nth-child(2n) { border-right: 0; }
   .composition-toolbar-main { grid-template-columns: 1fr; }
   .composition-controls { justify-content: flex-start; }
+  .narration-panel { grid-template-columns: 1fr; }
 }
 @media (width <= 640px) {
   .short-drama-page { height: calc(100vh - var(--header-container-default-heigth)); gap: 12px; padding: 12px; }

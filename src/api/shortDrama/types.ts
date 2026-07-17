@@ -51,7 +51,7 @@ export interface ShortDramaStoryboard {
 }
 
 export type ShortDramaTransitionType = 'none' | 'dissolve' | 'fade' | 'slide';
-export type ShortDramaAspectRatio = '9:16' | '16:9' | '1:1';
+export type ShortDramaAspectRatio = '16:9' | '4:3' | '1:1' | '3:4' | '9:16' | '21:9';
 export type ShortDramaComposeStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface ShortDramaComposeVideoRequest {
@@ -59,6 +59,10 @@ export interface ShortDramaComposeVideoRequest {
   transitionDurationSeconds: number;
   aspectRatio: ShortDramaAspectRatio;
   storyboardIds: SnowflakeId[];
+  /** 旁白语音资产ID（可选） */
+  narrationAudioId?: SnowflakeId;
+  /** 是否加水印（默认 true，后端默认 ruoyi-ai） */
+  watermark?: boolean;
 }
 
 export interface ShortDramaComposeVideoResult extends ShortDramaComposeVideoRequest {
@@ -100,6 +104,7 @@ export interface ShortDramaCharacterAppearance {
   selectedImageIndex?: number;
   previousImageUrls?: string;
   previousDescriptions?: string;
+  voice?: string;
 }
 
 export interface ShortDramaLocation {
@@ -124,7 +129,25 @@ export interface ShortDramaDetail {
   script?: ShortDramaScript;
   characters: ShortDramaCharacter[];
   locations: ShortDramaLocation[];
+  audios: ShortDramaAudio[];
   storyboards: ShortDramaStoryboard[];
+}
+
+export type ShortDramaAudioType = 'narration' | 'dialogue';
+
+export interface ShortDramaAudio {
+  id?: SnowflakeId;
+  projectId?: SnowflakeId;
+  name: string;
+  audioType: ShortDramaAudioType;
+  text: string;
+  voice?: string;
+  audioOssId?: SnowflakeId;
+  audioUrl?: string;
+  linkedStoryboardId?: SnowflakeId;
+  durationSeconds?: number;
+  createTime?: string;
+  updateTime?: string;
 }
 
 export interface ShortDramaIdea {
@@ -134,4 +157,3 @@ export interface ShortDramaIdea {
   artStyle?: string;
   aspectRatio?: ShortDramaAspectRatio;
 }
-

@@ -1,4 +1,5 @@
 ﻿import type {
+  ShortDramaAudio,
   ShortDramaCharacter,
   ShortDramaCharacterAppearance,
   ShortDramaComposeVideoRequest,
@@ -35,7 +36,7 @@ export function listShortDramaProjects() {
 }
 
 export function getShortDramaDetail(projectId: SnowflakeId) {
-  return unwrap(get<ShortDramaDetail>(`/short-drama/${projectId}`).json());
+  return unwrap(get<ShortDramaDetail>(`/short-drama/${projectId}?_t=${Date.now()}`).json());
 }
 
 export function createShortDramaFromIdea(data: ShortDramaIdea) {
@@ -179,6 +180,11 @@ function referenceImageQuery(referenceImageUrl?: string) {
     : '';
 }
 
+/** 保存子形象（含音色等字段） */
+export function saveShortDramaAppearance(data: ShortDramaCharacterAppearance) {
+  return unwrap(put<ShortDramaCharacterAppearance>('/short-drama/character-appearance', data).json());
+}
+
 export function regenerateAppearanceImage(appearanceId: SnowflakeId, model: string, referenceImageUrl?: string) {
   return unwrap(post<ShortDramaCharacterAppearance>(
     `/short-drama/character-appearance/${appearanceId}/regenerate?model=${encodeURIComponent(model)}${referenceImageQuery(referenceImageUrl)}`,
@@ -229,6 +235,31 @@ export function deleteLocationImage(locationId: SnowflakeId, index: number) {
 export function undoLocationImage(locationId: SnowflakeId) {
   return unwrap(post<ShortDramaLocation>(
     `/short-drama/location/${locationId}/undo-image`,
+  ).json());
+}
+
+/** 语音资产 CRUD */
+export function saveShortDramaAudio(data: ShortDramaAudio) {
+  return unwrap(post<ShortDramaAudio>('/short-drama/audio', data).json());
+}
+
+export function updateShortDramaAudio(data: ShortDramaAudio) {
+  return unwrap(put<ShortDramaAudio>('/short-drama/audio', data).json());
+}
+
+export function deleteShortDramaAudio(audioId: SnowflakeId) {
+  return unwrap(del<void>(`/short-drama/audio/${audioId}`).json());
+}
+
+export function listShortDramaAudios(projectId: SnowflakeId) {
+  return unwrap(get<ShortDramaAudio[]>(`/short-drama/audio/list?projectId=${projectId}`).json());
+}
+
+export function generateShortDramaAudio(audioId: SnowflakeId, model: string) {
+  return unwrap(post<ShortDramaAudio>(
+    `/short-drama/audio/${audioId}/generate-speech?model=${encodeURIComponent(model)}`,
+    {},
+    { timeout: IMAGE_GENERATION_TIMEOUT },
   ).json());
 }
 
@@ -289,5 +320,4 @@ export function getPrediction(model: string, predictionId: string) {
     `/media/prediction?model=${encodeURIComponent(model)}&predictionId=${predictionId}`,
   ).json());
 }
-
 
