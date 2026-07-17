@@ -402,6 +402,29 @@ async function loadDetail(projectId: SnowflakeId) {
   resumePendingImageTasks(projectId);
 }
 
+/** 后台轻量刷新：仅更新承载图片的角色/场景资产，不重置步骤、不碰视频轮询。 */
+async function refreshAssetsFromDetail() {
+  const projectId = currentProjectId.value;
+  if (!projectId) return;
+  try {
+    const res = await getShortDramaDetail(projectId);
+    if (!res) return;
+    detail.value = res;
+    characters.value = (res as any).characters || characters.value;
+    locations.value = (res as any).locations || locations.value;
+  } catch { /* 后台刷新失败不影响当前操作 */ }
+}
+
+/** 其他标签页完成图片任务后，本标签页收到广播：清理本地进度态并刷新资产。 */
+async function handleImageTaskBroadcast(event: MessageEvent) {
+  const data = event?.data;
+  if (!data || data.type !== 'completed' || !data.key) return;
+  if (data.projectId !== currentProjectId.value) return;
+  delete generatingImage.value[data.key];
+  delete imageGenProgress.value[data.key];
+  await refreshAssetsFromDetail();
+}
+
 // ---- step navigation ----
 
 function handleStepClick(step: StepName) {
@@ -920,6 +943,12 @@ const imagePollTimers = ref<Record<string, ReturnType<typeof setInterval>>>({});
 const IMAGE_POLL_INTERVAL = 2000; // 每 2 秒轮询
 const IMAGE_POLL_MAX = 150;       // 最多轮询 150 次（5 分钟）
 const IMAGE_TASK_STORAGE_KEY = 'ruoyi-drama:image-generation-tasks';
+/** 跨标签页排他锁名前缀，每个资产任务一把锁，避免多端重复 confirm。 */
+const IMAGE_TASK_LOCK_PREFIX = 'ruoyi-drama:image-task-lock:';
+/** 跨标签页广播：任务完成后通知其他标签页刷新对应资产，无需重复 confirm。 */
+const imageTaskChannel: BroadcastChannel | null = typeof BroadcastChannel !== 'undefined'
+  ? new BroadcastChannel('ruoyi-drama:image-tasks')
+  : null;
 
 interface PendingImageTask {
   projectId: SnowflakeId;
@@ -950,6 +979,63 @@ function removePendingImageTask(progressKey: string) {
   delete tasks[progressKey];
   if (Object.keys(tasks).length) localStorage.setItem(IMAGE_TASK_STORAGE_KEY, JSON.stringify(tasks));
   else localStorage.removeItem(IMAGE_TASK_STORAGE_KEY);
+}
+
+function imageTaskLockName(key: string) {
+  return `${IMAGE_TASK_LOCK_PREFIX}${key}`;
+}
+
+/**
+ * 跨标签页排他执行图片任务（轮询 + 确认保存）。
+ * - options.ifAvailable = true：拿不到锁（其他标签页正在处理）则返回 null，本标签页跳过。
+ * - 默认：等待拿到锁再执行；锁在回调 Promise 结束（或标签页关闭）后自动释放。
+ * 浏览器不支持 Web Locks 时退化为单标签页内执行，仍可正常工作，仅丢失跨标签页去重。
+ */
+function withImageTaskLock<T>(key: string, fn: () => Promise<T>, options: { ifAvailable?: boolean } = {}): Promise<T | null> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (!locks?.request) return fn();
+  return new Promise<T | null>((resolve, reject) => {
+    locks.request(imageTaskLockName(key), options.ifAvailable ? { ifAvailable: true } : {}, async (lock) => {
+      if (!lock) { resolve(null); return; }
+      try { resolve(await fn()); }
+      catch (error) { reject(error); }
+    });
+  });
+}
+
+function notifyImageTaskCompleted(key: string, projectId: SnowflakeId) {
+  imageTaskChannel?.postMessage({ type: 'completed', key, projectId });
+}
+
+/** 探测服务端 prediction 状态，不依赖本地轮询计时：用于恢复时判断是否已生成完毕。 */
+async function probePrediction(task: PendingImageTask): Promise<{ completed: true; url: string } | { completed: false; failed: true } | null> {
+  try {
+    const result: any = await getPrediction(task.model, task.predictionId);
+    if (result?.status === 'completed' && result?.url) return { completed: true, url: result.url };
+    if (result?.status === 'failed') return { completed: false, failed: true };
+    return null; // 仍在生成中
+  } catch (error: any) {
+    const msg = error?.message || '';
+    if (msg.includes('404') || msg.includes('not found')) return { completed: false, failed: true };
+    return null; // 网络波动，按"仍在生成中"处理，后续再探/轮询
+  }
+}
+
+/** 确认并落库图片，同步更新当前页内存中的资产对象。 */
+async function confirmAndApplyImageTask(task: PendingImageTask, target: ShortDramaCharacterAppearance | ShortDramaLocation) {
+  if (task.assetType === 'appearance') {
+    const updated = await confirmAppearanceImage(task.assetId, task.predictionId, task.model);
+    Object.assign(target, updated);
+    for (const ch of characters.value) {
+      const idx = ch.appearances?.findIndex(a => a.id === task.assetId);
+      if (idx != null && idx >= 0 && ch.appearances) { Object.assign(ch.appearances[idx], updated); break; }
+    }
+  } else {
+    const updated = await confirmLocationImage(task.assetId, task.predictionId, task.model);
+    Object.assign(target, updated);
+    const idx = locations.value.findIndex(l => l.id === task.assetId);
+    if (idx >= 0) Object.assign(locations.value[idx], updated);
+  }
 }
 
 /** 当前选中的图片模型 */
@@ -983,7 +1069,9 @@ function pollImagePrediction(predictionId: string, model: string, progressKey: s
         clearInterval(timer);
         delete imagePollTimers.value[progressKey];
         delete imageGenProgress.value[progressKey];
-        removePendingImageTask(progressKey);
+        // 不删除 localStorage 中的任务：页面关闭过久导致本轮轮询超时时，
+        // 服务端可能已生成完毕。保留任务，下次打开页面由 resumePendingImageTasks
+        // 先探一次服务端状态再决定保存/重试，避免"超时即丢弃已完成的图片"。
         reject(new Error('图片生成超时，请稍后重试'));
         return;
       }
@@ -1028,30 +1116,35 @@ async function handleGenerateAppearanceImage(appearance: ShortDramaCharacterAppe
     return;
   }
   const key = `appearance-${appearance.id}`;
+  const appearanceId = appearance.id;
+  const projectId = currentProjectId.value!;
   generatingImage.value[key] = true;
   try {
     // 1. 异步启动
-    const { predictionId } = await startAsyncImageGen('appearance', appearance.id, selectedImageModel.value, assetReferenceImages.value[key]);
+    const { predictionId } = await startAsyncImageGen('appearance', appearanceId, selectedImageModel.value, assetReferenceImages.value[key]);
     savePendingImageTask(key, {
-      projectId: currentProjectId.value!, assetType: 'appearance', assetId: appearance.id,
+      projectId, assetType: 'appearance', assetId: appearanceId,
       model: selectedImageModel.value, predictionId, startedAt: Date.now(),
     });
-    // 2. 轮询进度
+    // 2. 轮询进度 + 确认保存（跨标签页排他，避免其他标签页 resume 重复 confirm）
     imageGenProgress.value[key] = { status: 'polling', attempts: 0 };
-    await pollImagePrediction(predictionId, selectedImageModel.value, key);
-    // 3. 确认并保存
-    const updated = await confirmAppearanceImage(appearance.id, predictionId, selectedImageModel.value);
-    Object.assign(appearance, updated);
-    // 同步更新 characters 中对应的 appearance
-    for (const ch of characters.value) {
-      const idx = ch.appearances?.findIndex(a => a.id === appearance.id);
-      if (idx != null && idx >= 0 && ch.appearances) {
-        Object.assign(ch.appearances[idx], updated);
-        break;
+    await withImageTaskLock(key, async () => {
+      await pollImagePrediction(predictionId, selectedImageModel.value, key);
+      imageGenProgress.value[key] = { status: 'saving', attempts: imageGenProgress.value[key]?.attempts || 0 };
+      const updated = await confirmAppearanceImage(appearanceId, predictionId, selectedImageModel.value);
+      Object.assign(appearance, updated);
+      // 同步更新 characters 中对应的 appearance
+      for (const ch of characters.value) {
+        const idx = ch.appearances?.findIndex(a => a.id === appearanceId);
+        if (idx != null && idx >= 0 && ch.appearances) {
+          Object.assign(ch.appearances[idx], updated);
+          break;
+        }
       }
-    }
+    });
     delete imageGenProgress.value[key];
     removePendingImageTask(key);
+    notifyImageTaskCompleted(key, projectId);
   } catch (e: any) { ElMessage.error(e.message || '形象图片生成失败'); delete imageGenProgress.value[key]; }
   finally { generatingImage.value[key] = false; }
 }
@@ -1063,21 +1156,27 @@ async function handleGenerateLocationImage(location: ShortDramaLocation) {
     return;
   }
   const key = `location-${location.id}`;
+  const locationId = location.id;
+  const projectId = currentProjectId.value!;
   generatingImage.value[key] = true;
   try {
-    const { predictionId } = await startAsyncImageGen('location', location.id, selectedImageModel.value, assetReferenceImages.value[key]);
+    const { predictionId } = await startAsyncImageGen('location', locationId, selectedImageModel.value, assetReferenceImages.value[key]);
     savePendingImageTask(key, {
-      projectId: currentProjectId.value!, assetType: 'location', assetId: location.id,
+      projectId, assetType: 'location', assetId: locationId,
       model: selectedImageModel.value, predictionId, startedAt: Date.now(),
     });
     imageGenProgress.value[key] = { status: 'polling', attempts: 0 };
-    await pollImagePrediction(predictionId, selectedImageModel.value, key);
-    const updated = await confirmLocationImage(location.id, predictionId, selectedImageModel.value);
-    Object.assign(location, updated);
-    const idx = locations.value.findIndex(l => l.id === location.id);
-    if (idx >= 0) Object.assign(locations.value[idx], updated);
+    await withImageTaskLock(key, async () => {
+      await pollImagePrediction(predictionId, selectedImageModel.value, key);
+      imageGenProgress.value[key] = { status: 'saving', attempts: imageGenProgress.value[key]?.attempts || 0 };
+      const updated = await confirmLocationImage(locationId, predictionId, selectedImageModel.value);
+      Object.assign(location, updated);
+      const idx = locations.value.findIndex(l => l.id === locationId);
+      if (idx >= 0) Object.assign(locations.value[idx], updated);
+    });
     delete imageGenProgress.value[key];
     removePendingImageTask(key);
+    notifyImageTaskCompleted(key, projectId);
   } catch (e: any) { ElMessage.error(e.message || '场景图片生成失败'); delete imageGenProgress.value[key]; }
   finally { generatingImage.value[key] = false; }
 }
@@ -1099,40 +1198,62 @@ function resumePendingImageTasks(projectId: SnowflakeId) {
   const tasks = readPendingImageTasks();
   Object.entries(tasks).forEach(([key, task]) => {
     if (task.projectId !== projectId || imagePollTimers.value[key]) return;
-    const elapsedAttempts = Math.floor((Date.now() - task.startedAt) / IMAGE_POLL_INTERVAL);
-    if (elapsedAttempts >= IMAGE_POLL_MAX) {
-      removePendingImageTask(key);
-      return;
-    }
 
     const target = task.assetType === 'appearance'
       ? findAppearance(task.assetId)
       : locations.value.find(item => item.id === task.assetId);
     if (!target) return;
 
-    generatingImage.value[key] = true;
-    imageGenProgress.value[key] = { status: 'polling', attempts: elapsedAttempts };
-    void (async () => {
+    // 跨标签页排他：同一任务只由一个标签页恢复，其余标签页跳过；
+    // 完成后通过 BroadcastChannel 通知它们刷新资产，避免重复 confirm。
+    void withImageTaskLock(key, async () => {
+      // 拿到锁后再读一次：等待期间可能已被其他标签页处理完并删除。
+      if (imagePollTimers.value[key] || !readPendingImageTasks()[key]) return;
+      generatingImage.value[key] = true;
+      imageGenProgress.value[key] = { status: 'polling', attempts: 0 };
       try {
-        await pollImagePrediction(task.predictionId, task.model, key, elapsedAttempts);
-        if (task.assetType === 'appearance') {
-          const updated = await confirmAppearanceImage(task.assetId, task.predictionId, task.model);
-          Object.assign(target, updated);
-        } else {
-          const updated = await confirmLocationImage(task.assetId, task.predictionId, task.model);
-          Object.assign(target, updated);
-        }
-        removePendingImageTask(key);
-        delete imageGenProgress.value[key];
-        ElMessage.success('图片生成任务已恢复并完成');
+        await resumeImageTask(task, target, key);
+        notifyImageTaskCompleted(key, projectId);
       } catch (error: any) {
         delete imageGenProgress.value[key];
         ElMessage.error(error.message || '图片生成任务恢复失败');
       } finally {
         generatingImage.value[key] = false;
       }
-    })();
+    }, { ifAvailable: true });
   });
+}
+
+/**
+ * 恢复单个图片任务：先探服务端状态——已完成直接保存、已失败直接清理，
+ * 仍在生成则续轮询一个完整窗口。不再因页面关闭时长超过 5 分钟就丢弃任务，
+ * 从而解决"页面关闭后重开无法加载已生成图片"的问题。
+ */
+async function resumeImageTask(task: PendingImageTask, target: ShortDramaCharacterAppearance | ShortDramaLocation, key: string) {
+  const probed = await probePrediction(task);
+  if (probed?.completed) {
+    imageGenProgress.value[key] = { status: 'saving', attempts: 0 };
+    await confirmAndApplyImageTask(task, target);
+    removePendingImageTask(key);
+    delete imageGenProgress.value[key];
+    ElMessage.success('图片生成任务已恢复并完成');
+    return;
+  }
+  if (probed && !probed.completed) {
+    // 服务端已失败或任务失效（404）：清理残留任务。
+    removePendingImageTask(key);
+    delete imageGenProgress.value[key];
+    ElMessage.warning('图片生成任务已失效，请重新生成');
+    return;
+  }
+  // 仍在生成中：以"当前时刻"为起点重新轮询一个完整窗口。
+  imageGenProgress.value[key] = { status: 'polling', attempts: 0 };
+  await pollImagePrediction(task.predictionId, task.model, key, 0);
+  imageGenProgress.value[key] = { status: 'saving', attempts: 0 };
+  await confirmAndApplyImageTask(task, target);
+  removePendingImageTask(key);
+  delete imageGenProgress.value[key];
+  ElMessage.success('图片生成任务已恢复并完成');
 }
 async function handleRegenerateAppearanceImage(appearance: ShortDramaCharacterAppearance) {
   await handleGenerateAppearanceImage(appearance);
@@ -1250,6 +1371,7 @@ async function handleUndoLocationImage(location: ShortDramaLocation) {
 }
 
 onMounted(async () => {
+  if (imageTaskChannel) imageTaskChannel.addEventListener('message', handleImageTaskBroadcast);
   const incomingIdea = typeof route.query.idea === 'string' ? route.query.idea.trim() : '';
   const incomingRatio = typeof route.query.ratio === 'string' ? route.query.ratio : '';
   const incomingStyle = typeof route.query.style === 'string' ? route.query.style : '';
@@ -1290,6 +1412,7 @@ onUnmounted(() => {
   pollingTimers.value = {};
   Object.keys(imagePollTimers.value).forEach(k => clearInterval(imagePollTimers.value[k]));
   imagePollTimers.value = {};
+  imageTaskChannel?.close();
 });
 </script>
 
