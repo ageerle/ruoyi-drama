@@ -44,6 +44,8 @@ import VideoPromptEditor from './components/VideoPromptEditor.vue';
 import { formatScriptText } from '@/utils/scriptFormatting';
 import { useScriptCreation } from '@/composables/useScriptCreation';
 import { reviewShot } from './shotReview';
+import { flowShotSnapshot, type FlowMedia } from '@/utils/dramaFlowGraph';
+import type { FlowActions } from './components/flow/types';
 /*
  * 国际化（i18n）迁移约定 —— 第二批机械迁移时遵循：
  * 1. code→label 映射表（roleLevelLabels / artStyleLabels / phaseLabels 等）改为 computed，
@@ -59,10 +61,11 @@ import { reviewShot } from './shotReview';
  *
  * 本轮已迁移代表性切片：workflowSteps、composeStatusLabels，以及若干 ElMessage，作为模式验证。
  */
-import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, useTemplateRef, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, shallowRef, useTemplateRef, watch } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { ElMessage } from '@/utils/message';
 import { useRoute, useRouter } from 'vue-router';
+import { useDramaWorkspaceView } from '@/composables/useDramaWorkspaceView';
 import { useI18n } from 'vue-i18n';
 import {
   composeShortDramaVideo,
@@ -126,6 +129,27 @@ const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
 const storyboardToolsCollapsed = ref(true);
+const FlowDesigner = defineAsyncComponent(() => import('./components/flow/FlowDesigner.vue'));
+const FlowStudio = defineAsyncComponent(() => import('./components/flow/FlowStudio.vue'));
+const { referencesOpen: flowDesignerOpen, canvasOpen: flowStudioOpen,
+  openReferences: openFlowDesigner, openCanvas: openFlowStudio, close: closeFlowWorkspace,
+} = useDramaWorkspaceView(() => currentProjectId.value);
+async function refreshCanvasProject() {
+  if (currentProjectId.value) await loadDetail(currentProjectId.value);
+}
+async function handleCreateCanvasProject() {
+  try {
+    const { value } = await ElMessageBox.prompt('输入短剧名称，创建后进入空白画布。', '新建画布项目', { inputPlaceholder: '短剧名称', inputValidator: value => !!value?.trim() || '请填写短剧名称', confirmButtonText: '创建', cancelButtonText: '取消' });
+    const projectId = await saveShortDramaProject({ projectName: value.trim(), status: 'draft' });
+    if (!projectId) throw new Error('项目创建未返回编号');
+    await closeFlowWorkspace();
+    await loadDetail(projectId);
+    await refreshProjects();
+    await openFlowStudio();
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error instanceof Error ? error.message : '创建失败');
+  }
+}
 // Auxiliary production tools stay outside the focused storyboard editor.
 const showStoryboardAuxiliaryTools = false;
 
@@ -579,7 +603,7 @@ async function loadDetail(projectId: SnowflakeId) {
   videoSubmissions.sync();
   storyboardDrafts.value.forEach(item => videoSubmissions.reconcile(item));
   currentProjectId.value = projectId;
-  if (route.query.projectId !== projectId) await router.replace({ name: 'shortDrama', query: { projectId } });
+  if (route.query.projectId !== projectId) await router.replace({ name: 'shortDrama', query: { ...route.query, projectId } });
   composeStoryboardIds.value = workspaceStoryboards.value
     .filter(item => item.id && item.videoStatus === 'done' && item.videoUrl)
     .map(item => item.id!);
@@ -848,13 +872,13 @@ async function handleDeleteStoryboard(item: ShortDramaStoryboard) {
 }
 
 async function handleSaveStoryboard(item: ShortDramaStoryboard) {
-  if (composeBusy.value || savingStoryboard.value) return;
-  if (videoSubmissionBlocked(item)) { ElMessage.warning('视频请求尚未确认，请先查询状态后再保存镜头'); return; }
+  if (composeBusy.value || savingStoryboard.value) return false;
+  if (videoSubmissionBlocked(item)) { ElMessage.warning('视频请求尚未确认，请先查询状态后再保存镜头'); return false; }
   const secondsIssue = videoSecondsIssue(reviewShot(item).c);
-  if (secondsIssue) { ElMessage.warning(secondsIssue); return; }
+  if (secondsIssue) { ElMessage.warning(secondsIssue); return false; }
   if (item.continuityJson) {
     try { const value = JSON.parse(item.continuityJson); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(); }
-    catch { ElMessage.warning('镜头承接信息必须是有效的 JSON 对象'); return; }
+    catch { ElMessage.warning('镜头承接信息必须是有效的 JSON 对象'); return false; }
   }
   savingStoryboard.value = true;
   try {
@@ -862,9 +886,43 @@ async function handleSaveStoryboard(item: ShortDramaStoryboard) {
     Object.assign(item, saved);
     invalidateComposeView();
     ElMessage.success('分镜已保存');
+    return true;
   } finally {
     savingStoryboard.value = false;
   }
+}
+
+// The canvas edits existing storyboard rows; generation retains the original submission/recovery path.
+const flowActions: FlowActions = {
+  async save(id, patch, baseline) {
+    const item = storyboardDrafts.value.find(shot => shot.id === id);
+    if (!item) { ElMessage.warning('镜头已不存在，请刷新项目'); return false; }
+    const current = flowShotSnapshot(item);
+    if (Object.keys(baseline).some(key => current[key as keyof typeof current] !== baseline[key as keyof typeof baseline])) {
+      ElMessage.warning('镜头内容已更新，请撤销画布中的修改后重新编辑'); return false;
+    }
+    const candidate = { ...item, ...patch };
+    if (!await handleSaveStoryboard(candidate)) return false;
+    Object.assign(item, candidate);
+    return true;
+  },
+  async generate(id) {
+    const item = storyboardDrafts.value.find(shot => shot.id === id);
+    return item ? handleGenerateVideo(item, item.videoStatus === 'done') : false;
+  },
+  async query(id) { const item = storyboardDrafts.value.find(shot => shot.id === id); if (item) await handleCheckVideoProgress(item); },
+  async restore(id) { const item = storyboardDrafts.value.find(shot => shot.id === id); if (item) await handleRestoreVideoSubmission(item); },
+  state(item) {
+    return { blocked: videoSubmissionBlocked(item), unknown: videoSubmissionUnknown(item), hint: videoSubmissionHint(item),
+      canRestore: canRestoreVideoSubmission(item), previewSrc: storyboardVideoPreviewSource(item),
+      canGenerate: !composeBusy.value && !savingStoryboard.value && !videoSubmissionBlocked(item) && videoModelAvailable(item) && !isDirectMaterial(item),
+      busy: !!generatingVideo.value[item.id || ''] };
+  },
+};
+async function openFlowBusinessEditor(media: FlowMedia) {
+  await closeFlowWorkspace();
+  if (media.shot?.id) { selectShot(media.shot.id); activeStep.value = 'storyboard'; }
+  else { activeStep.value = 'assets'; assetCategoryTab.value = media.kind === 'location' ? 'locations' : media.kind === 'prop' ? 'props' : 'characters'; }
 }
 
 async function handleDeleteProject(projectId: SnowflakeId) {
@@ -1886,10 +1944,15 @@ function isDirectMaterial(item: ShortDramaStoryboard) {
       <section v-if="!hasProject" class="hero-panel">
         <div class="hero-copy">
           <h1>短剧创作</h1>
+          <el-button type="primary" @click="handleCreateCanvasProject">从空白画布开始</el-button>
         </div>
       </section>
 
       <!-- Step navigation -->
+      <section v-if="detail && hasProject" class="flow-entry">
+        <div><span>创作空间</span><strong>{{ detail.project.projectName }}</strong></div>
+        <div class="flow-entry-actions"><el-button @click="handleCreateCanvasProject">新建画布</el-button><el-button @click="openFlowDesigner">素材关系图</el-button><el-button type="primary" :disabled="savingStoryboard || storyboardStructureChanging" @click="openFlowStudio"><el-icon><Connection /></el-icon>自由画布</el-button></div>
+      </section>
       <section class="step-panel">
         <button
           v-for="step in workflowSteps" :key="step.name" class="step-item"
@@ -2390,10 +2453,17 @@ function isDirectMaterial(item: ShortDramaStoryboard) {
         </template>
       </section>
     </main>
+    <Teleport to="body">
+      <FlowDesigner v-if="flowDesignerOpen && detail && currentProjectId" :project="detail.project" :characters="characters" :locations="locations" :shots="storyboardDrafts" :versions="storyboardVersions" v-model:version="selectedVersionId" :actions="flowActions" :settings="{ models: videoModels, fallback: ideaForm.videoModel }" @close="closeFlowWorkspace" @edit="openFlowBusinessEditor" @prepare="closeFlowWorkspace(); activeStep = 'storyboard'" />
+      <FlowStudio v-if="flowStudioOpen && detail && currentProjectId" :key="currentProjectId" :detail="{ ...detail, characters, locations, storyboards: storyboardDrafts }" :actions="flowActions" :refresh="refreshCanvasProject" :image-models="imageModels" :video-models="videoModels" @close="closeFlowWorkspace" @references="openFlowDesigner" @new="handleCreateCanvasProject" />
+    </Teleport>
   </div>
 </template>
 
 <style scoped lang="scss">
+.flow-entry { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 20px; margin-bottom:16px; border:1px solid var(--drama-border); border-radius:var(--drama-radius-md); background:var(--drama-surface-strong); }
+.flow-entry>div { min-width:0; display:grid; gap:7px; }.flow-entry span { font-size:10px; letter-spacing:1px; color:var(--drama-text-tertiary); }.flow-entry strong { font-size:14px; font-weight:650; color:var(--drama-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }.flow-entry .el-button { flex:none; }.flow-entry .el-icon { margin-right:6px; }
+.flow-entry>.flow-entry-actions { display:flex; flex-wrap:wrap; gap:8px; }.flow-entry-actions .el-button { margin-left:0; }
 .shot-edit-toolbar {
   display: flex;
   align-items: center;

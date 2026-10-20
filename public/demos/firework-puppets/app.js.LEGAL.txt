@@ -1,0 +1,258 @@
+Bundled license information:
+
+three/build/three.core.js:
+  /**
+   * @license
+   * Copyright 2010-2026 Three.js Authors
+   * SPDX-License-Identifier: MIT
+   */
+
+three/build/three.module.js:
+  /**
+   * @license
+   * Copyright 2010-2026 Three.js Authors
+   * SPDX-License-Identifier: MIT
+   */
+
+mediabunny/dist/modules/src/misc.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/logging.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/metadata.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/shared/bitstream.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/shared/aac-misc.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/shared/ac3-misc.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/version.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/codec-data.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/codec.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/packet.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/isobmff/isobmff-misc.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/isobmff/isobmff-reader.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/adts/adts-reader.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/sample.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/encode.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/custom-coder.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/reader.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/muxer.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/subtitles.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/isobmff/isobmff-boxes.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/writer.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/target.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/isobmff/isobmff-muxer.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/media-source.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/output-format.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/output.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */
+
+mediabunny/dist/modules/src/index.js:
+  /*!
+   * Copyright (c) 2026-present, Vanilagy and contributors
+   *
+   * This Source Code Form is subject to the terms of the Mozilla Public
+   * License, v. 2.0. If a copy of the MPL was not distributed with this
+   * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+   */

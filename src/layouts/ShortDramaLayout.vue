@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ElMessageBox } from 'element-plus';
 import { ElMessage } from '@/utils/message';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import LocaleSwitcher from '@/components/LocaleSwitcher.vue';
 import AtlasKeyDialog from '@/components/AtlasKeyDialog.vue';
@@ -9,6 +9,9 @@ import DramaSkillMarket from '@/pages/short-drama/components/DramaSkillMarket.vu
 import { useUserStore } from '@/stores';
 
 const router = useRouter();
+const route = useRoute();
+// Toggling the editor must keep any unsaved workbench drafts mounted.
+const workspaceRouteKey = computed(() => router.resolve({ path:route.path, query:Object.fromEntries(Object.entries(route.query).filter(([key]) => key !== 'canvas')) }).fullPath);
 const userStore = useUserStore();
 const { t } = useI18n();
 const keyDialogVisible = ref(false);
@@ -77,7 +80,7 @@ async function handleLogout() {
       </div>
     </header>
     <main class="app-main">
-      <router-view :key="$route.fullPath" />
+      <router-view :key="workspaceRouteKey" />
     </main>
     <AtlasKeyDialog v-model="keyDialogVisible" />
     <DramaSkillMarket v-model="skillMarketVisible" />

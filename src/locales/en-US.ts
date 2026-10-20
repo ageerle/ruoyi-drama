@@ -1,5 +1,13 @@
 import type { MessageSchema } from './types';
 
+/*
+public void (){
+
+
+}
+*/
+
+
 const enUS: MessageSchema = {
   common: {
     webTitle: 'AI Short Drama Studio',
@@ -145,6 +153,8 @@ const enUS: MessageSchema = {
       atlasKeyRequired: 'Please enter an Atlas Cloud API Key',
     },
   },
+
+
   skillMarket: {
     intro: 'Browse the current drama prompts, production skills, aesthetics and directing styles.',
     refresh: 'Refresh', search: 'Search drama skills and prompts', empty: 'No matching content',

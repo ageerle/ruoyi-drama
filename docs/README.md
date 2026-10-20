@@ -2,6 +2,14 @@
 
 ## 工作台操作
 
+- [3D 导演工作台（预览版）](3d-director.md) · [动作设计操作参考](3d-director-actions.md) · [流程设计器](flow-designer.md)
+
+- [武打动作视频教程](tutorials/director-fight/README.md)
+
+- [从参考视频复刻动作](tutorials/reference-motion/README.md)
+
+- [一字长蛇阵军阵预演与操作参考](military-array-threejs.md)
+
 - [上美影水墨淡彩推文与完整教程](tutorials/smy-watercolor/README.md)
 
 - [原始创作输入保存](creative-idea-persistence.md)

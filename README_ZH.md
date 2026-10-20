@@ -1,5 +1,7 @@
 # ruoyi-drama
 
+在线演示：[code.ruoyiai.chat](https://code.ruoyiai.chat/)
+
 ruoyi-drama 是基于 Vue 3、TypeScript 和 Vite 的短剧工作台，配套 ruoyi-ai 后端使用。前端负责剧本编辑、素材审阅和任务进度展示，登录权限、模型调用、素材存储和视频合成由后端处理。
 
 制作流程分为想法、剧本、资产和分镜四步。每一步审阅后再进入下一步，角色、场景和道具可以在项目里反复使用。

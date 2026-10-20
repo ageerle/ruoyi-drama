@@ -1,5 +1,7 @@
 # ruoyi-drama
 
+Live demo: [code.ruoyiai.chat](https://code.ruoyiai.chat/)
+
 ruoyi-drama is a short drama workspace built with Vue 3, TypeScript and Vite, backed by ruoyi-ai. The frontend handles screenplay editing, asset review and task progress. The backend handles accounts, permissions, model calls, media storage and video composition.
 
 Projects move through four stages: idea, screenplay, assets and storyboards. Review each stage before continuing. Characters, locations and props can be reused within a project.

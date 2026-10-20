@@ -1,0 +1,33 @@
+<script setup lang="ts">
+import { Handle, Position } from '@vue-flow/core';
+import { Document, Picture, VideoCamera, Microphone, EditPen } from '@element-plus/icons-vue';
+import { canvasLabels, type CanvasNode, type CanvasData } from '@/utils/dramaCanvas';
+import GeneratedAssetImage from '../GeneratedAssetImage.vue';
+const props = defineProps<{ data: CanvasNode; selected?: boolean; status?: string }>();
+const emit = defineEmits<{ patch:[value:Partial<CanvasData>]; inspect:[] }>();
+const icons = { text:EditPen,script:Document,image:Picture,video:VideoCamera,audio:Microphone,group:Document,previs:VideoCamera };
+function change(event: Event, key:'title'|'content') { emit('patch',{[key]:(event.target as HTMLInputElement).value}); }
+</script>
+<template>
+  <article class="canvas-card" :class="[data.kind,{selected}]" :style="data.kind==='group' ? {width:`${data.data.width || 650}px`,height:`${data.data.height || 430}px`} : undefined">
+    <template v-if="data.kind==='group'"><span class="group-title">{{ data.data.title }}</span><span class="group-caption">拖动分组一起移动</span></template>
+    <template v-else>
+      <Handle v-if="data.kind!=='text'" type="target" :position="Position.Left" id="input" aria-label="节点输入" />
+      <header class="card-heading"><span><el-icon><component :is="icons[data.kind]" /></el-icon>{{ canvasLabels[data.kind] }}</span><small>{{ status || (data.data.business ? '已保存到项目' : '草稿') }}</small></header>
+      <input v-if="selected" class="node-title-input nodrag nopan" :value="data.data.title" aria-label="节点标题" @change="change($event,'title')" />
+      <h3 v-else class="card-title">{{ data.data.title }}</h3>
+      <div v-if="data.kind==='image'" class="card-image"><GeneratedAssetImage v-if="data.data.url || data.data.job?.url" :src="data.data.url || data.data.job!.url!" :title="data.data.title" :interactive="false" /><div v-else class="media-empty"><el-icon><Picture /></el-icon><span>上传图片或编写描述</span></div></div>
+      <div v-else-if="data.kind==='video'" class="card-video"><el-icon><VideoCamera /></el-icon><span>{{ data.data.business ? '镜头已接入制作流程' : '编写导演稿，连接参考素材' }}</span><small v-if="data.data.seconds">{{data.data.seconds}}s</small></div>
+      <div v-else-if="data.kind==='audio'" class="card-wave"><i v-for="(h,i) in [12,28,16,42,24,50,34,18,38,26,44,16,30,12]" :key="i" :style="{height:`${h}px`}" /><span>角色样音</span></div>
+      <div v-else-if="data.kind==='previs'" class="card-video"><el-icon><VideoCamera /></el-icon><span>白模调度 · 人物动作 · 摄影机运镜</span><small>预览版 · {{data.data.seconds || 8}}s</small></div>
+      <textarea v-else-if="selected" class="node-text nodrag nopan nowheel" :value="data.data.content" :placeholder="data.kind==='script' ? '粘贴或编写完整剧本…' : '写下故事、对白或制作笔记…'" :aria-label="data.kind==='script' ? '节点剧本正文' : '节点文本正文'" @change="change($event,'content')" />
+      <p v-else class="text-preview">{{ data.data.content || (data.kind==='script' ? '从故事大纲写出第一版剧本' : '点击节点，开始写作') }}</p>
+      <p v-if="['image','video','previs'].includes(data.kind)" class="prompt-preview">{{ data.kind==='previs' ? data.data.content || '从空场景添加白模，设计动作与机位，再导出预演' : data.data.prompt || '点击节点编辑内容与生成参数' }}</p>
+      <footer class="card-footer"><span>{{ data.kind==='image' ? ({character:'角色',location:'场景',prop:'道具',frame:'首帧'}[data.data.purpose || 'character']) : data.kind==='video' ? `镜头 ${data.data.order || '—'}` : '可连接到后续节点' }}</span><button type="button" class="nodrag nopan" @click.stop="emit('inspect')">编辑节点 ↗</button></footer>
+      <Handle type="source" :position="Position.Right" id="output" aria-label="节点输出" />
+    </template>
+  </article>
+</template>
+<style scoped>
+.canvas-card{width:300px;border:1px solid var(--drama-border);border-radius:12px;background:var(--drama-surface-strong);box-shadow:0 4px 14px #202c4010;color:var(--drama-text);overflow:hidden}.canvas-card.selected{border-color:var(--drama-primary);box-shadow:0 0 0 3px #2563eb15}.card-heading{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 0;font-size:11px;color:var(--drama-text-secondary)}.card-heading>span{display:flex;align-items:center;gap:6px}.card-heading small{font-size:10px;color:var(--drama-text-tertiary)}.card-title,.node-title-input{margin:12px 14px;font-size:14px;font-weight:600;width:calc(100% - 28px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.node-title-input{border:0;border-bottom:1px solid var(--drama-border);outline:none;background:transparent;color:inherit;padding:0 0 4px}.card-image{margin:0 8px;height:160px;overflow:hidden;border-radius:7px;--asset-image-height:160px}.media-empty,.card-video{display:grid;place-content:center;justify-items:center;gap:13px;height:160px;background:var(--drama-image-surface);color:var(--drama-text-tertiary);font-size:11px}.media-empty .el-icon,.card-video>.el-icon{font-size:28px}.card-video{margin:0 8px;border-radius:7px;position:relative}.card-video small{position:absolute;bottom:10px;right:10px}.node-text,.text-preview{margin:0 14px 14px;width:calc(100% - 28px);height:138px;font-size:12px;line-height:1.8;color:var(--drama-text-secondary);white-space:pre-wrap;overflow:auto}.node-text{border:0;outline:none;resize:vertical;background:var(--drama-surface-muted);border-radius:5px;padding:8px;box-sizing:border-box}.text-preview{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}.prompt-preview{padding:0 14px;margin:12px 0;min-height:36px;font-size:11px;line-height:1.7;color:var(--drama-text-tertiary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.card-footer{padding:11px 14px;border-top:1px solid var(--drama-border-subtle);display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--drama-text-tertiary)}.card-footer button{border:0;background:transparent;cursor:pointer;color:var(--drama-primary);font-size:11px}.card-wave{height:110px;background:var(--drama-primary-soft);margin:0 8px;display:flex;align-items:center;justify-content:center;gap:7px;border-radius:7px;position:relative}.card-wave i{width:3px;border-radius:3px;background:var(--drama-primary);opacity:.4}.card-wave span{position:absolute;bottom:10px;font-size:10px;color:var(--drama-primary)}.group{border:1px dashed #9cb3d0;border-radius:16px;background:#e5edf530;box-shadow:none;overflow:visible}.group-title{display:block;padding:16px 20px;font-size:13px;font-weight:600}.group-caption{position:absolute;bottom:12px;right:18px;font-size:10px;color:var(--drama-text-tertiary)}.canvas-card :deep(.vue-flow__handle){width:10px;height:10px;background:white;border:2px solid #9eb1cd}.canvas-card :deep(.vue-flow__handle)::before{content:'';position:absolute;inset:-8px}
+</style>
